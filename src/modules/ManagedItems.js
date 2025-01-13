@@ -39,10 +39,10 @@ export class ManagedItems {
 				: this.filters
 
 		// sometimes columns are updated in new releases, this allows us to show them
-		if (!this.loadSetting('cleared', false)) {
+		if (!this.loadSetting('cleared2', false)) {
 			this._filters = this.initialFilters
 			this._columns = this.initialTableColumns
-			this.storeSetting('cleared', true)
+			this.storeSetting('cleared2', true)
 		}
 
 		this._selected = this.initialSelected
@@ -55,7 +55,7 @@ export class ManagedItems {
 		}
 
 		this.tableColumns = this.tableColumns.filter(
-			(t) => !!this.propDefs[t.name]
+			(t) => !!this.propDefs[t.name],
 		)
 	}
 
@@ -141,7 +141,7 @@ export class ManagedItems {
 		return ColumnFilterHelper.filterByFilterSpec(
 			new NodeCollection(this.items, this.propDefs),
 			this.allTableHeaders,
-			this.filters
+			this.filters,
 		).nodes // TODO: nodes should be items
 	}
 
@@ -299,7 +299,7 @@ export class ManagedItems {
 		// when undeginedPlaceholder is set, we need to replace the filter value with undefined
 		if (undefinedPlaceholder && filterDef?.values) {
 			filterDef.values = filterDef.values.map((f) =>
-				f === undefinedPlaceholder ? undefined : f
+				f === undefinedPlaceholder ? undefined : f,
 			)
 		}
 
@@ -419,7 +419,7 @@ export class ManagedItems {
 		) {
 			formattedGroup = this.propDefs[this.groupBy[0]].customGroupValue(
 				group,
-				this.groupBy
+				this.groupBy,
 			)
 		}
 		return this.groupByTitle + ': ' + formattedGroup
@@ -450,7 +450,7 @@ export class ManagedItems {
 					sortBy,
 					sortDesc,
 					a,
-					b
+					b,
 				)
 			} else {
 				// Standard sort for every other column
@@ -481,7 +481,7 @@ export class ManagedItems {
 					displayStyle: '',
 					description: '',
 					rawValue: this.getPropValue(item, propName),
-			  }
+				}
 	}
 }
 

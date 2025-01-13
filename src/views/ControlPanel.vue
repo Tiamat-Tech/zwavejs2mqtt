@@ -2,80 +2,30 @@
 	<div>
 		<v-container fluid class="pa-4">
 			<v-row class="py-4 align-center" no-gutters>
-				<v-col class="text-end">
-					<v-menu>
-						<template #activator="{ on }">
-							<v-item-group class="v-btn-toggle">
-								<v-btn
-									color="primary"
-									outlined
-									@click="toggleControllerStatistics"
-								>
-									<v-icon left>
-										{{ statisticsOpeningIndicator }}
-									</v-icon>
-									Controller statistics
-									<v-icon color="primary" right>
-										multiline_chart
-									</v-icon>
-								</v-btn>
-								<v-btn color="primary" outlined v-on="on">
-									Actions
-									<v-icon right>arrow_drop_down</v-icon>
-								</v-btn>
-							</v-item-group>
-						</template>
-
-						<v-list>
-							<v-list-item @click="addRemoveShowDialog = true">
-								<v-list-item-content
-									class="d-none d-sm-inline-flex"
-								>
-									<v-list-item-title>
-										Manage nodes
-									</v-list-item-title>
-									<v-list-item-subtitle>
-										Include, replace or exclude devices
-									</v-list-item-subtitle>
-								</v-list-item-content>
-								<v-list-item-action>
-									<v-btn
-										depressed
-										outlined
-										color="primary"
-										@click="addRemoveShowDialog = true"
-									>
-										Manage nodes
-									</v-btn>
-								</v-list-item-action>
-							</v-list-item>
-							<v-divider />
-							<v-list-item @click="advancedShowDialog = true">
-								<v-list-item-content
-									class="d-none d-sm-inline-flex"
-								>
-									<v-list-item-title>
-										Advanced actions
-									</v-list-item-title>
-									<v-list-item-subtitle>
-										Maintenance, troubleshooting and other
-										advanced actions
-									</v-list-item-subtitle>
-								</v-list-item-content>
-								<v-list-item-action>
-									<v-btn
-										dark
-										color="green"
-										depressed
-										outlined
-										@click="advancedShowDialog = true"
-									>
-										Advanced actions
-									</v-btn>
-								</v-list-item-action>
-							</v-list-item>
-						</v-list>
-					</v-menu>
+				<v-col :class="compact ? 'text-center' : 'text-end'">
+					<v-item-group class="v-btn-toggle">
+						<v-btn
+							color="primary"
+							outlined
+							@click="toggleControllerStatistics"
+						>
+							<v-icon left>
+								{{ statisticsOpeningIndicator }}
+							</v-icon>
+							Controller statistics
+							<v-icon color="primary" right>
+								multiline_chart
+							</v-icon>
+						</v-btn>
+						<v-btn
+							color="primary"
+							v-if="$vuetify.breakpoint.mdAndUp"
+							:outlined="!compactMode"
+							@click.stop="compactMode = !compactMode"
+						>
+							Compact
+						</v-btn>
+					</v-item-group>
 				</v-col>
 			</v-row>
 			<v-expand-transition>
@@ -83,7 +33,7 @@
 					<v-col class="mb-8">
 						<v-sheet outlined rounded>
 							<StatisticsCard
-								v-if="true || controllerNode"
+								v-if="!!controllerNode"
 								title="Controller Statistics"
 								:node="this.controllerNode"
 							/>
@@ -92,26 +42,77 @@
 				</v-row>
 			</v-expand-transition>
 			<nodes-table
+				v-if="!compact"
+				class="pb-8"
 				:socket="socket"
-				v-on="$listeners"
 				@action="sendAction"
+				@selected="selected = $event"
 			/>
+			<smart-view
+				:socket="socket"
+				@selected="selected = $event"
+				@action="sendAction"
+				v-else
+			>
+			</smart-view>
 		</v-container>
-
-		<DialogNodesManager
-			v-model="addRemoveShowDialog"
-			:socket="socket"
-			@close="onAddRemoveClose"
-			@apiRequest="apiRequest"
-			v-on="{ showConfirm: $listeners.showConfirm }"
-		/>
 
 		<DialogAdvanced
 			v-model="advancedShowDialog"
 			@close="advancedShowDialog = false"
 			:actions="actions"
 			@action="onAction"
+			:title="advancedDialogTitle"
 		/>
+
+		<v-speed-dial bottom fab right fixed v-model="fab">
+			<template v-slot:activator>
+				<v-btn
+					:color="selected.length === 0 ? 'blue darken-2' : 'success'"
+					dark
+					fab
+					hover
+					v-model="fab"
+				>
+					<v-icon v-if="fab">close</v-icon>
+					<v-icon v-else>menu</v-icon>
+				</v-btn>
+			</template>
+			<v-tooltip left>
+				<template v-slot:activator="{ on, attrs }">
+					<v-btn
+						fab
+						v-if="selected.length === 0"
+						dark
+						small
+						color="green"
+						@click="showNodesManager()"
+						v-bind="attrs"
+						v-on="on"
+					>
+						<v-icon>all_inclusive</v-icon>
+					</v-btn>
+				</template>
+				<span>Manage nodes</span>
+			</v-tooltip>
+
+			<v-tooltip left>
+				<template v-slot:activator="{ on, attrs }">
+					<v-btn
+						fab
+						dark
+						small
+						color="purple"
+						@click="advancedShowDialog = true"
+						v-bind="attrs"
+						v-on="on"
+					>
+						<v-icon>auto_fix_high</v-icon>
+					</v-btn>
+				</template>
+				<span>Advanced actions</span>
+			</v-tooltip>
+		</v-speed-dial>
 	</div>
 </template>
 
@@ -119,25 +120,25 @@
 import ConfigApis from '@/apis/ConfigApis'
 import { mapState, mapActions } from 'pinia'
 
-import DialogNodesManager from '@/components/dialogs/DialogNodesManager'
-import DialogAdvanced from '@/components/dialogs/DialogAdvanced'
-import NodesTable from '@/components/nodes-table'
 import { Settings } from '@/modules/Settings'
 import { jsonToList } from '@/lib/utils'
-import { socketEvents } from '@/../server/lib/SocketEvents'
-import StatisticsCard from '@/components/custom/StatisticsCard'
 import useBaseStore from '../stores/base.js'
+import InstancesMixin from '../mixins/InstancesMixin.js'
+import logger from '../lib/logger'
+
+const log = logger.get('ControlPanel')
 
 export default {
 	name: 'ControlPanel',
 	props: {
 		socket: Object,
 	},
+	mixins: [InstancesMixin],
 	components: {
-		NodesTable,
-		DialogNodesManager,
-		DialogAdvanced,
-		StatisticsCard,
+		NodesTable: () => import('@/components/nodes-table/index.vue'),
+		DialogAdvanced: () => import('@/components/dialogs/DialogAdvanced.vue'),
+		StatisticsCard: () => import('@/components/custom/StatisticsCard.vue'),
+		SmartView: () => import('@/components/nodes-table/SmartView.vue'),
 	},
 	computed: {
 		...mapState(useBaseStore, ['nodes', 'zwave', 'controllerNode']),
@@ -149,15 +150,38 @@ export default {
 				? 'arrow_drop_up'
 				: 'arrow_drop_down'
 		},
+		compact() {
+			return this.$vuetify.breakpoint.smAndDown || this.compactMode
+		},
+		compactMode: {
+			get() {
+				return useBaseStore().ui.compactMode
+			},
+			set(value) {
+				useBaseStore().setCompactMode(value)
+			},
+		},
+		actions() {
+			if (this.selected.length === 0) return this.generalActions
+
+			return this.selectedActions
+		},
+		advancedDialogTitle() {
+			if (this.selected.length === 0) return 'General actions'
+
+			return `Actions for ${this.selected.length} selected node${
+				this.selected.length > 1 ? 's' : ''
+			}`
+		},
 	},
 	watch: {},
 	data() {
 		return {
+			fab: false,
+			selected: [],
 			settings: new Settings(localStorage),
-			bindedSocketEvents: {}, // keep track of the events-handlers
-			addRemoveShowDialog: false,
 			advancedShowDialog: false,
-			actions: [
+			generalActions: [
 				{
 					text: 'Backup',
 					options: [
@@ -174,18 +198,6 @@ export default {
 					desc: 'Export all nodes in a json file. Useful for debugging purposes',
 				},
 				{
-					text: 'Heal Network',
-					options: [
-						{
-							name: 'Begin',
-							action: 'beginHealingNetwork',
-						},
-						{ name: 'Stop', action: 'stopHealingNetwork' },
-					],
-					icon: 'healing',
-					desc: 'Force nodes to establish better connections to the controller',
-				},
-				{
 					text: 'Re-interview Nodes',
 					options: [
 						{
@@ -197,6 +209,7 @@ export default {
 						},
 					],
 					icon: 'history',
+					color: 'warning',
 					desc: 'Clear all info about all nodes and make a new full interview. Use when nodes has wrong or missing capabilities',
 				},
 				{
@@ -242,6 +255,7 @@ export default {
 						},
 					],
 					icon: 'dangerous',
+					color: 'error',
 					desc: 'Manage nodes that are dead and/or marked as failed with the controller',
 				},
 				{
@@ -262,6 +276,7 @@ export default {
 						{ name: 'Restore', action: 'restoreNVM' },
 					],
 					icon: 'update',
+					color: 'warning',
 					desc: "Backup/Restore controller's NVM (Non Volatile Memory)",
 				},
 				{
@@ -276,6 +291,23 @@ export default {
 					color: 'red',
 					desc: 'Perform a firmware update OTW (Over The Wire)',
 				},
+				{
+					text: 'Shutdown Zwave API',
+					options: [
+						{
+							name: 'Shutdown',
+							action: 'shutdownZwaveAPI',
+							args: {
+								confirm:
+									'Are you sure you want to shutdown the Zwave API? You will have to unplug and replug the Zwave stick manually to restart it.',
+								confirmLevel: 'warning',
+							},
+						},
+					],
+					icon: 'power_off',
+					color: 'warning',
+					desc: 'Allows to shutdown the Zwave API to safely unplug the Zwave stick.',
+				},
 			],
 			rules: {
 				required: (value) => {
@@ -287,14 +319,86 @@ export default {
 					return valid || 'This field is required.'
 				},
 			},
+			/** Actions to show when there is one or more selected nodes in table */
+			selectedActions: [
+				{
+					text: 'Re-interview Node',
+					options: [
+						{
+							name: 'Interview',
+							action: 'refreshInfo',
+						},
+					],
+					icon: 'history',
+					desc: 'Clear all info about this node and make a new full interview. Use when the node has wrong or missing capabilities',
+				},
+				{
+					text: 'Refresh Values',
+					options: [
+						{
+							name: 'Refresh',
+							action: 'refreshValues',
+							args: {
+								confirm:
+									'Are you sure you want to refresh values of this node? This action increases network traffic',
+							},
+						},
+					],
+					icon: 'cached',
+					desc: 'Update all CC values and metadata. Use only when many values seems stale',
+				},
+				{
+					text: 'Rebuild Routes',
+					options: [
+						{
+							name: 'Begin',
+							action: 'beginRebuildingRoutes',
+						},
+						{ name: 'Stop', action: 'stopRebuildingRoutes' },
+					],
+					icon: 'healing',
+					color: 'warning',
+					desc: 'Force nodes to establish new connections to the controller',
+				},
+				{
+					text: 'Rebuild Node Routes',
+					options: [
+						{
+							name: 'Rebuild',
+							action: 'rebuildNodeRoutes',
+							args: {
+								confirm:
+									'Rebuilding routes of a specific node. This action causes a lot of traffic, can take minutes up to hours and you can expect degraded performance while it is going on',
+							},
+						},
+					],
+					icon: 'healing',
+					color: 'warning',
+					desc: 'Discover and assign new routes between a specific node to the controller and his neighbors',
+				},
+				{
+					text: 'Ping',
+					options: [
+						{
+							name: 'Ping',
+							action: 'pingNode',
+						},
+					],
+					icon: 'swap_horiz',
+					desc: 'Ping node to check if it is alive',
+				},
+			],
 			showControllerStatistics: false,
 		}
 	},
 	methods: {
-		...mapActions(useBaseStore, ['setHealProgress', 'showSnackbar']),
+		...mapActions(useBaseStore, [
+			'setRebuildRoutesProgress',
+			'showSnackbar',
+		]),
 		jsonToList,
-		onAddRemoveClose() {
-			this.addRemoveShowDialog = false
+		showNodesManager() {
+			this.app.showNodesManager()
 		},
 		async onAction(action, args = {}) {
 			if (action === 'import') {
@@ -304,28 +408,28 @@ export default {
 			} else if (action === 'exportDump') {
 				this.exportDump()
 			} else {
-				this.sendAction(action, args)
+				this.sendAction(action, { ...args, nodes: this.selected })
 			}
 		},
 		async importConfiguration() {
 			if (
-				await this.$listeners.showConfirm(
+				await this.app.confirm(
 					'Attention',
 					'This will override all existing nodes names and locations',
-					'alert'
+					'alert',
 				)
 			) {
 				try {
-					const { data } = await this.$listeners.import('json')
+					const { data } = await this.app.importFile('json')
 					const response = await ConfigApis.importConfig({
 						data: data,
 					})
 					this.showSnackbar(
 						response.message,
-						response.success ? 'success' : 'error'
+						response.success ? 'success' : 'error',
 					)
 				} catch (error) {
-					console.log(error)
+					log.error(error)
 				}
 			}
 		},
@@ -334,459 +438,27 @@ export default {
 				const data = await ConfigApis.exportConfig()
 				this.showSnackbar(
 					data.message,
-					data.success ? 'success' : 'error'
+					data.success ? 'success' : 'error',
 				)
 				if (data.success) {
-					this.$listeners.export(data.data, 'nodes', 'json')
+					this.app.exportConfiguration(data.data, 'nodes', 'json')
 				}
 			} catch (error) {
-				console.log(error)
+				log.error(error)
 			}
 		},
 		exportDump() {
-			this.$listeners.export(this.nodes, 'nodes_dump', 'json')
-		},
-		async sendAction(action, { nodeId, broadcast, confirm }) {
-			if (action) {
-				if (confirm) {
-					const ok = await this.$listeners.showConfirm(
-						'Info',
-						confirm,
-						'info',
-						{
-							cancelText: 'cancel',
-							confirmText: 'ok',
-							width: 900,
-						}
-					)
-
-					if (!ok) {
-						return
-					}
-				}
-				let args = []
-				if (nodeId !== undefined) {
-					if (!broadcast) {
-						if (isNaN(nodeId)) {
-							this.showSnackbar(
-								'Node ID must be an integer value',
-								'error'
-							)
-							return
-						}
-						args.push(parseInt(nodeId))
-					}
-				}
-
-				if (action === 'startInclusion') {
-					const secure = await this.$listeners.showConfirm(
-						'Node inclusion',
-						'Start inclusion in secure mode?',
-						'info',
-						{
-							cancelText: 'No',
-						}
-					)
-					args.push(secure)
-				} else if (action === 'hardReset') {
-					const { confirm } = await this.$listeners.showConfirm(
-						'Hard Reset',
-						'Your controller will be reset to factory and all paired devices will be removed',
-						'alert',
-						{
-							confirmText: 'Ok',
-							inputs: [
-								{
-									type: 'text',
-									label: 'Confirm',
-									required: true,
-									key: 'confirm',
-									hint: 'Type "yes" and press OK to confirm',
-								},
-							],
-						}
-					)
-					if (!confirm || confirm !== 'yes') {
-						return
-					}
-				} else if (action === 'beginHealingNetwork') {
-					const { includeSleeping } =
-						await this.$listeners.showConfirm(
-							'Info',
-							'Healing network causes a lot of traffic, can take minutes up to hours and users have to expect degraded performance while it is going on',
-							'info',
-							{
-								confirmText: 'Heal',
-								inputs: [
-									{
-										type: 'checkbox',
-										label: 'Include sleeping nodes',
-										key: 'includeSleeping',
-										value: false,
-									},
-								],
-							}
-						)
-					if (includeSleeping === undefined) {
-						return
-					}
-					args.push({ includeSleeping })
-				} else if (action === 'firmwareUpdateOTW') {
-					const result = await this.$listeners.showConfirm(
-						'Firmware update OTW',
-						`<h3 class="red--text">We don't take any responsibility if devices upgraded using Z-Wave JS don't work after an update. Always double-check that the correct update is about to be installed.</h3>
-						<h3 class="mt-2 red--text">A failure during this process may leave your controller in recovery mode, rendering it unusable until a correct firmware image is uploaded. In case of 500 series controllers a failure on this process is likely unrecoverable.</h3>
-						`,
-						'alert',
-						{
-							confirmText: 'Update',
-							width: 500,
-							inputs: [
-								{
-									type: 'file',
-									label: 'File',
-									hint: 'Firmware file',
-									key: 'file',
-									accept: '.hex,.gbl,.otz,.ota',
-								},
-							],
-						}
-					)
-
-					const file = result?.file
-
-					if (!file) {
-						return
-					}
-
-					try {
-						const buffer = await file.arrayBuffer()
-						args = [
-							{
-								name: file.name,
-								data: buffer,
-							},
-						]
-						const store = useBaseStore()
-
-						// start the progress bar
-						store.initNode({
-							id: this.controllerNode.id,
-							firmwareUpdate: {
-								progress: 0,
-							},
-						})
-					} catch (error) {
-						this.showSnackbar('Error reading file', 'error')
-						return
-					}
-				} else if (action === 'updateFirmware') {
-					try {
-						const node = this.nodes.find((n) => n.id === nodeId)
-						const targets = node.firmwareCapabilities
-							.firmwareTargets || [0]
-
-						const fileInput = {
-							cols: 8,
-							type: 'file',
-							label: 'File',
-							hint: 'Firmware file',
-							key: 'file',
-							accept: '.bin,.exe,.ex_,.hex,.gbl,.otz,.ota,.hec',
-						}
-
-						const targetInput = {
-							type: 'list',
-							cols: 4,
-							allowManualEntry: true,
-							label: 'Target',
-							hint: 'Target to update',
-							key: 'target',
-							items: targets.map((t) => ({
-								text: 'Target ' + t,
-								value: t,
-							})),
-						}
-
-						const inputs = []
-
-						for (const t of targets) {
-							inputs.push({
-								...fileInput,
-								key: 'file_' + t,
-							})
-
-							inputs.push({
-								...targetInput,
-								key: 'target_' + t,
-							})
-						}
-
-						const result = await this.$listeners.showConfirm(
-							'Firmware update',
-							'',
-							'info',
-							{
-								confirmText: 'Ok',
-								width: 500,
-								inputs,
-							}
-						)
-
-						if (!result) {
-							return
-						}
-
-						const fwData = []
-						for (const t of targets) {
-							if (result['file_' + t]) {
-								const f = result['file_' + t]
-								const fwEntry = {
-									name: f.name,
-									data: await f.arrayBuffer(),
-									target: parseInt(result['target_' + t]),
-								}
-
-								if (isNaN(fwEntry.target)) {
-									delete fwEntry.target
-								}
-
-								fwData.push(fwEntry)
-							}
-						}
-
-						if (fwData.length === 0) {
-							return
-						}
-
-						args.push(fwData)
-					} catch (error) {
-						return
-					}
-				} else if (action === 'driverFunction') {
-					const { data: snippets } = await ConfigApis.getSnippets()
-					await this.$listeners.showConfirm(
-						'Driver function',
-						'',
-						'info',
-						{
-							width: 900,
-							confirmText: 'Close',
-							cancelText: '',
-							inputs: [
-								{
-									type: 'list',
-									key: 'snippet',
-									label: 'Snippets',
-									default: '',
-									items: snippets,
-									itemText: 'name',
-									itemValue: 'name',
-									hint: 'Select a snippet from library',
-									onChange(values, v) {
-										const content = v
-											? snippets.find((s) => s.name === v)
-													?.content
-											: ''
-
-										if (v) {
-											values.code = content
-										}
-									},
-								},
-								{
-									type: 'button',
-									label: 'Run',
-									icon: 'play_circle_outline',
-									color: 'primary',
-									onChange: (values) => {
-										this.apiRequest(action, [values.code])
-									},
-								},
-								{
-									type: 'code',
-									key: 'code',
-									default:
-										'// Example:\n// const { logger, zwaveClient, require } = this\n// const node = driver.controller.nodes.get(35);\n// await node.refreshInfo();\n// logger.info(`Node ${node.id} is ready: ${node.ready}`);',
-									hint: `Write the function here. The only arg is:
-                    <code>driver</code>. The function is <code>async</code>.`,
-								},
-							],
-						}
-					)
-
-					return
-				} else if (action === 'backupNVMRaw') {
-					const confirm = await this.$listeners.showConfirm(
-						'NVM Backup',
-						'While doing the backup the Z-Wave radio will be turned on/off',
-						'alert',
-						{
-							confirmText: 'Ok',
-						}
-					)
-					if (!confirm) {
-						return
-					}
-				} else if (action === 'restoreNVM') {
-					const confirm = await this.$listeners.showConfirm(
-						'NVM Restore',
-						'While doing the restore the Z-Wave radio will be turned on/off.\n<strong>A failure during this process may brick your controller. Use at your own risk!</strong>',
-						'alert',
-						{
-							confirmText: 'Ok',
-						}
-					)
-					if (!confirm) {
-						return
-					}
-
-					try {
-						const { data } = await this.$listeners.import('buffer')
-						args.push(data)
-					} catch (error) {
-						return
-					}
-				} else if (action === 'refreshInfo') {
-					const options = await this.$listeners.showConfirm(
-						'Refresh info',
-						`Are you sure you want to re-interview ${
-							broadcast ? 'all nodes' : 'node ' + nodeId
-						}? All known information about your nodes will be discarded. Battery powered nodes need to be woken up, interaction with the nodes won't be reliable until the interview is done.`,
-						'info',
-						{
-							width: 900,
-							confirmText: 'Ok',
-							inputs: [
-								{
-									type: 'checkbox',
-									key: 'resetSecurityClasses',
-									default: false,
-									label: 'Reset security classes',
-								},
-							],
-						}
-					)
-
-					if (!options || Object.keys(options).length === 0) {
-						return
-					}
-
-					args.push(options)
-				}
-
-				if (broadcast) {
-					let nodes = this.nodes
-
-					// ignore sleeping nodes in broadcast request. Fixes #983
-					if (action === 'removeFailedNode') {
-						nodes = nodes.filter((n) => n.status !== 'Asleep')
-					}
-
-					for (let i = 0; i < nodes.length; i++) {
-						const nodeid = nodes[i].id
-						this.apiRequest(action, [nodeid])
-					}
-				} else {
-					this.apiRequest(action, args)
-				}
-			}
-		},
-		apiRequest(apiName, args) {
-			this.$emit('apiRequest', apiName, args)
-		},
-		saveConfiguration() {
-			this.apiRequest('writeConfig', [])
-		},
-		onApiResponse(data) {
-			if (data.success) {
-				switch (data.api) {
-					case 'getDriverStatistics':
-						this.$listeners.showConfirm(
-							'Driver statistics',
-							this.jsonToList(data.result)
-						)
-						break
-					case 'getNodeStatistics':
-						this.$listeners.showConfirm(
-							'Node statistics',
-							this.jsonToList(data.result)
-						)
-						break
-					case 'backupNVMRaw':
-						{
-							this.showSnackbar(
-								'NVM Backup DONE. You can find your file NVM_<date>.bin in store directory',
-								'success'
-							)
-							const { result } = data
-							this.$listeners.export(
-								result.data,
-								result.fileName,
-								'bin'
-							)
-						}
-						break
-					case 'restoreNVM':
-						this.showSnackbar('NVM restore DONE', 'success')
-						break
-					case 'firmwareUpdateOTW': {
-						// handled in App.vue
-						break
-					}
-					default:
-						this.showSnackbar(
-							'Successfully call api ' + data.api,
-							'success'
-						)
-				}
-			} else {
-				if (data.api === 'firmwareUpdateOTW') {
-					// this could happen when the update fails before start
-					// used to close the firmware update dialog
-					if (this.controllerNode.firmwareUpdate) {
-						useBaseStore().initNode({
-							id: this.controllerNode.id,
-							firmwareUpdate: false,
-							firmwareUpdateResult: {
-								success: false,
-								status: data.message,
-							},
-						})
-					}
-				} else {
-					this.showSnackbar(
-						'Error while calling api ' +
-							data.api +
-							': ' +
-							data.message,
-						'error'
-					)
-				}
-			}
-		},
-		bindEvent(eventName, handler) {
-			this.socket.on(socketEvents[eventName], handler)
-			this.bindedSocketEvents[eventName] = handler
-		},
-		unbindEvents() {
-			for (const event in this.bindedSocketEvents) {
-				this.socket.off(
-					socketEvents[event],
-					this.bindedSocketEvents[event]
-				)
-			}
+			this.app.exportConfiguration(this.nodes, 'nodes_dump', 'json')
 		},
 		toggleControllerStatistics() {
 			this.showControllerStatistics = !this.showControllerStatistics
 		},
 	},
 	mounted() {
-		const onApiResponse = this.onApiResponse.bind(this)
-		const onHealProgress = this.setHealProgress.bind(this)
-
-		this.bindEvent('api', onApiResponse)
-		this.bindEvent('healProgress', onHealProgress)
+		this.bindEvent(
+			'rebuildRoutesProgress',
+			this.setRebuildRoutesProgress.bind(this),
+		)
 	},
 	beforeDestroy() {
 		if (this.socket) {

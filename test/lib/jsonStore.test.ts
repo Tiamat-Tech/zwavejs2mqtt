@@ -1,25 +1,28 @@
 /* eslint-disable @typescript-eslint/no-floating-promises */
 import chai, { expect } from 'chai'
 import proxyquire from 'proxyquire'
-import { StorageHelper } from '../../lib/jsonStore'
+import { StorageHelper } from '../../api/lib/jsonStore'
 import sinon from 'sinon'
-import { StoreFile, StoreKeys } from '../../config/store'
+import { StoreFile, StoreKeys } from '../../api/config/store'
+import sinonChai from 'sinon-chai'
+import chaiAsPromised from 'chai-as-promised'
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-chai.use(require('chai-as-promised'))
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-chai.use(require('sinon-chai'))
+chai.use(sinonChai)
+chai.use(chaiAsPromised)
 
 describe('#jsonStore', () => {
 	describe('#getFile()', () => {
 		const config = { file: 'foo', default: { foo: 'defaultbar' } }
 
 		it("doesn't throw error", () => {
-			const mod: StorageHelper = proxyquire('../../lib/jsonStore.ts', {
-				jsonfile: {
-					readFile: sinon.stub().rejects(Error('FOO')),
+			const mod: StorageHelper = proxyquire(
+				'../../api/lib/jsonStore.ts',
+				{
+					jsonfile: {
+						readFile: sinon.stub().rejects(Error('FOO')),
+					},
 				},
-			}).default
+			).default
 			return expect(mod['_getFile'](config)).to.not.be.rejected
 		})
 
@@ -28,11 +31,14 @@ describe('#jsonStore', () => {
 				file: 'foo',
 				data: { bar: 'mybar', a: 'a', b: 'c' },
 			}
-			const mod: StorageHelper = proxyquire('../../lib/jsonStore.ts', {
-				jsonfile: {
-					readFile: sinon.stub().resolves(toReturn.data),
+			const mod: StorageHelper = proxyquire(
+				'../../api/lib/jsonStore.ts',
+				{
+					jsonfile: {
+						readFile: sinon.stub().resolves(toReturn.data),
+					},
 				},
-			}).default
+			).default
 
 			return expect(mod['_getFile'](config)).to.eventually.deep.equal({
 				file: toReturn.file,
@@ -41,11 +47,14 @@ describe('#jsonStore', () => {
 		})
 
 		it('no data, return default', () => {
-			const mod: StorageHelper = proxyquire('../../lib/jsonStore.ts', {
-				jsonfile: {
-					readFile: sinon.stub().resolves(null),
+			const mod: StorageHelper = proxyquire(
+				'../../api/lib/jsonStore.ts',
+				{
+					jsonfile: {
+						readFile: sinon.stub().resolves(null),
+					},
 				},
-			}).default
+			).default
 			return expect(mod['_getFile'](config)).to.eventually.deep.equal({
 				file: 'foo',
 				data: config.default,
@@ -53,11 +62,14 @@ describe('#jsonStore', () => {
 		})
 
 		it('file not found, return default', () => {
-			const mod: StorageHelper = proxyquire('../../lib/jsonStore.ts', {
-				jsonfile: {
-					readFile: sinon.stub().rejects({ code: 'ENOENT' }),
+			const mod: StorageHelper = proxyquire(
+				'../../api/lib/jsonStore.ts',
+				{
+					jsonfile: {
+						readFile: sinon.stub().rejects({ code: 'ENOENT' }),
+					},
 				},
-			}).default
+			).default
 			return expect(mod['_getFile'](config)).to.eventually.deep.equal({
 				file: 'foo',
 				data: config.default,
@@ -78,12 +90,12 @@ describe('#jsonStore', () => {
 			it('ok', async () => {
 				const data = { foo: 'bar' }
 				const mod: StorageHelper = proxyquire(
-					'../../lib/jsonStore.ts',
+					'../../api/lib/jsonStore.ts',
 					{
 						jsonfile: {
 							readFile: sinon.stub().resolves(data),
 						},
-					}
+					},
 				).default
 
 				await mod.init(fakeStore)
@@ -95,12 +107,12 @@ describe('#jsonStore', () => {
 
 			it('error', async () => {
 				const mod: StorageHelper = proxyquire(
-					'../../lib/jsonStore.ts',
+					'../../api/lib/jsonStore.ts',
 					{
 						jsonfile: {
 							readFile: sinon.stub().rejects(Error('foo')),
 						},
-					}
+					},
 				).default
 
 				await mod.init(fakeStore)
@@ -112,24 +124,27 @@ describe('#jsonStore', () => {
 		})
 
 		describe('#get()', () => {
-			const mod: StorageHelper = proxyquire('../../lib/jsonStore.ts', {
-				jsonfile: {
-					readFile: sinon.stub().resolves('bar'),
+			const mod: StorageHelper = proxyquire(
+				'../../api/lib/jsonStore.ts',
+				{
+					jsonfile: {
+						readFile: sinon.stub().resolves('bar'),
+					},
 				},
-			}).default
+			).default
 
 			beforeEach(async () => await mod.init(fakeStore))
 
 			it('known', () =>
 				expect(
-					mod.get({ file: fakeStore.settings.file } as StoreFile)
+					mod.get({ file: fakeStore.settings.file } as StoreFile),
 				).to.equal(fakeStore.settings.default))
 			it('unknown', () => {
 				try {
 					mod.get({ file: 'unknown' } as StoreFile)
 				} catch (error) {
 					return expect(error.message).to.equal(
-						'Requested file not present in store: unknown'
+						'Requested file not present in store: unknown',
 					)
 				}
 			})
@@ -138,30 +153,30 @@ describe('#jsonStore', () => {
 		describe('#put()', () => {
 			it('ok', () => {
 				const mod: StorageHelper = proxyquire(
-					'../../lib/jsonStore.ts',
+					'../../api/lib/jsonStore.ts',
 					{
 						jsonfile: {
 							writeFile: sinon.stub().resolves('bar'),
 						},
-					}
+					},
 				).default
 
 				return expect(
-					mod.put({ file: 'foo' } as StoreFile, 'bardata')
+					mod.put({ file: 'foo' } as StoreFile, 'bardata'),
 				).to.eventually.equal('bardata')
 			})
 			it('error', () => {
 				const mod: StorageHelper = proxyquire(
-					'../../lib/jsonStore.ts',
+					'../../api/lib/jsonStore.ts',
 					{
 						jsonfile: {
 							writeFile: sinon.stub().rejects(Error('foo')),
 						},
-					}
+					},
 				).default
 
 				return expect(
-					mod.put({ file: 'foo' } as StoreFile, '')
+					mod.put({ file: 'foo' } as StoreFile, ''),
 				).to.be.rejectedWith('foo')
 			})
 		})

@@ -39,10 +39,10 @@
 
 					<v-row class="mb-2" justify="space-around">
 						<v-btn
-							color="success"
-							:disabled="loading || !targetNode"
-							@click="checkHealth()"
-							>Check</v-btn
+							:color="loading ? 'error' : 'success'"
+							:disabled="!targetNode"
+							@click="loading ? stopHealth() : checkHealth()"
+							>{{ loading ? 'Stop' : 'Check' }}</v-btn
 						>
 						<v-menu
 							:close-on-content-click="false"
@@ -196,7 +196,10 @@
 						class="mb-2"
 						justify="space-around"
 					>
-						<v-col v-if="averages.numNeighbors" class="text-center">
+						<v-col
+							v-if="averages.numNeighbors && !isLR"
+							class="text-center"
+						>
 							<p class="mb-1 subtitle-1 font-weight-bold">
 								No. Neighbors
 							</p>
@@ -294,7 +297,7 @@
 								<strong
 									:class="
 										getFailedPingsColor(
-											item.failedPingsNode
+											item.failedPingsNode,
 										)
 									"
 									>{{ item.failedPingsNode }}/10</strong
@@ -308,7 +311,7 @@
 								<strong
 									:class="
 										getFailedPingsColor(
-											item.failedPingsController
+											item.failedPingsController,
 										)
 									"
 									>{{ item.failedPingsController }}/10</strong
@@ -327,7 +330,7 @@
 								<strong
 									:class="
 										getFailedPingsColor(
-											item.failedPingsToSource
+											item.failedPingsToSource,
 										)
 									"
 									>{{ item.failedPingsToSource }}/10</strong
@@ -341,7 +344,7 @@
 								<strong
 									:class="
 										getFailedPingsColor(
-											item.failedPingsToTarget
+											item.failedPingsToTarget,
 										)
 									"
 									>{{ item.failedPingsToTarget }}/10</strong
@@ -360,7 +363,7 @@
 								<strong
 									:class="
 										getPowerLevelColor(
-											item.minPowerlevelSource
+											item.minPowerlevelSource,
 										)
 									"
 									>{{
@@ -376,7 +379,7 @@
 								<strong
 									:class="
 										getPowerLevelColor(
-											item.minPowerlevelTarget
+											item.minPowerlevelTarget,
 										)
 									"
 									>{{
@@ -407,29 +410,37 @@
 </style>
 
 <script>
-import { socketEvents, inboundEvents } from '@/../server/lib/SocketEvents'
 import { copy } from '@/lib/utils'
 import { getEnumMemberName } from 'zwave-js/safe'
 import { Powerlevel } from '@zwave-js/cc/safe'
-import { mapActions } from 'pinia'
+import { mapActions, mapState } from 'pinia'
 
 import useBaseStore from '../../stores/base.js'
+import InstancesMixin from '../../mixins/InstancesMixin.js'
+import { Protocols } from '@zwave-js/core/safe'
 
 export default {
 	components: {},
 	props: {
 		value: Boolean, // show or hide
-		socket: Object,
 		node: Object,
-		nodes: Array,
+		socket: Object,
 	},
+	mixins: [InstancesMixin],
 	watch: {
 		value(v) {
 			this.init(v)
 		},
 	},
 	computed: {
+		...mapState(useBaseStore, ['nodes']),
+		isLR() {
+			return this.activeNode?.protocol === Protocols.ZWaveLongRange
+		},
 		filteredNodes() {
+			if (this.isLR) {
+				return this.nodes.filter((n) => n.isControllerNode)
+			}
 			return this.activeNode
 				? this.nodes.filter((n) => n.id !== this.activeNode.id)
 				: this.nodes
@@ -461,7 +472,6 @@ export default {
 	},
 	data() {
 		return {
-			bindedSocketEvents: {},
 			loading: false,
 			results: [],
 			rounds: 5,
@@ -557,10 +567,10 @@ export default {
 	methods: {
 		...mapActions(useBaseStore, ['showSnackbar']),
 		exportResults() {
-			this.$listeners.export(
+			this.app.exportConfiguration(
 				this.results,
 				`healthCheck_${this.activeNode.id}-${this.resultsTargetNode}`,
-				'json'
+				'json',
 			)
 		},
 		getNeighborsColor(value) {
@@ -627,16 +637,15 @@ export default {
 				this.rounds = 5
 				this.activeNode = copy(this.node)
 				this.targetNode = this.filteredNodes.find(
-					(n) => n.isControllerNode
+					(n) => n.isControllerNode,
 				)
 				this.selectedNode = this.filteredNodes[0]
 					? this.filteredNodes[0].id
 					: null
 				this.bindEvent(
 					'healthCheckProgress',
-					this.onHealthCheckProgress.bind(this)
+					this.onHealthCheckProgress.bind(this),
 				)
-				this.bindEvent('api', this.onApiResponse.bind(this))
 			} else if (open === false) {
 				this.unbindEvents()
 				this.results = []
@@ -645,46 +654,16 @@ export default {
 				this.averages = null
 			}
 		},
-		onApiResponse(data) {
-			if (
-				data.api === 'checkLifelineHealth' ||
-				data.api === 'checkRouteHealth'
-			) {
-				this.loading = false
-				if (data.success) {
-					const res = data.result
-
-					this.results = res.results
-					delete res.results
-					this.averages = res
-
-					this.averages.numNeighbors = Math.max(
-						...this.results.map((n) => n.numNeighbors)
-					)
-
-					this.resultsTargetNode = res.targetNodeId
-				} else {
-					this.results.pop()
-					this.showSnackbar(
-						data.message || 'Health check failed',
-						'error'
-					)
-					console.error(data)
-				}
-			}
-		},
 		onHealthCheckProgress(data) {
 			// eslint-disable-next-line no-unused-vars
-			const { request, round, totalRounds, lastRating } = data
+			const { request, round, totalRounds, lastResult } = data
 
 			// prevent showing results of other requests
 			if (request.nodeId === this.activeNode.id) {
-				const lastResult = this.results[this.results.length - 1]
+				const step = this.results[this.results.length - 1]
 
 				if (lastResult) {
-					Object.assign(lastResult, {
-						rating: lastRating,
-					})
+					Object.assign(step, lastResult)
 				}
 				if (round < totalRounds) {
 					this.results.push({
@@ -694,21 +673,16 @@ export default {
 				}
 			}
 		},
-		bindEvent(eventName, handler) {
-			this.socket.on(socketEvents[eventName], handler)
-			this.bindedSocketEvents[eventName] = handler
-		},
-		unbindEvents() {
-			for (const event in this.bindedSocketEvents) {
-				this.socket.off(
-					socketEvents[event],
-					this.bindedSocketEvents[event]
-				)
-			}
+		async stopHealth() {
+			const response = await this.app.apiRequest(`abortHealthCheck`, [
+				this.activeNode.id,
+			])
 
-			this.bindedSocketEvents = {}
+			if (response.success) {
+				this.showSnackbar('Health check aborted', 'success')
+			}
 		},
-		checkHealth() {
+		async checkHealth() {
 			this.loading = true
 			this.results = []
 			const args = [this.activeNode.id]
@@ -731,15 +705,40 @@ export default {
 
 			args.push(this.rounds || 1)
 
-			this.socket.emit(inboundEvents.zwave, {
-				api: `check${this.mode}Health`,
-				args,
-			})
-
 			this.results.push({
 				round: 1,
 				rating: undefined,
 			})
+
+			const response = await this.app.apiRequest(
+				`check${this.mode}Health`,
+				args,
+				{
+					infoSnack: true,
+					errorSnack: false,
+				},
+			)
+
+			this.loading = false
+			if (response.success) {
+				const res = response.result
+
+				this.results = res.results
+				delete res.results
+				this.averages = res
+
+				this.averages.numNeighbors = Math.max(
+					...this.results.map((n) => n.numNeighbors),
+				)
+
+				this.resultsTargetNode = res.targetNodeId
+			} else {
+				this.results.pop()
+				this.showSnackbar(
+					response.message || 'Health check failed',
+					'error',
+				)
+			}
 		},
 	},
 	beforeDestroy() {

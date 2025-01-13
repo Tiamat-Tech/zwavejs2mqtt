@@ -102,10 +102,124 @@ Payload:
 
 </details>
 
+#### `getSchedules`
+
+```ts
+async getSchedules(
+	nodeId: number,
+	opts: { mode?: ZUIScheduleEntryLockMode; fromCache: boolean } = {
+		fromCache: true,
+	},
+): Promise<ZUISchedule>;
+```
+
+If the node supports Schedule Lock CC parses all available schedules and cache them.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/getSchedules/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		opts
+	]
+}
+```
+
+</details>
+
+#### `cancelGetSchedule`
+
+```ts
+cancelGetSchedule(): void;
+```
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/cancelGetSchedule/set`
+
+Payload:
+
+```json
+{
+	"args": []
+}
+```
+
+</details>
+
+#### `setSchedule`
+
+```ts
+async setSchedule(
+	nodeId: number,
+	type: 'daily' | 'weekly' | 'yearly',
+	schedule: ScheduleEntryLockSlotId &
+		(
+			| ScheduleEntryLockDailyRepeatingSchedule
+			| ScheduleEntryLockWeekDaySchedule
+			| ScheduleEntryLockYearDaySchedule
+		),
+): Promise<SupervisionResult>;
+```
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/setSchedule/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		type,
+		schedule
+	]
+}
+```
+
+</details>
+
+#### `setEnabledSchedule`
+
+```ts
+async setEnabledSchedule(nodeId: number, enabled: boolean, userId: number): Promise<SupervisionResult>;
+```
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/setEnabledSchedule/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		enabled,
+		userId
+	]
+}
+```
+
+</details>
+
 #### `getAssociations`
 
 ```ts
-getAssociations(nodeId: number): ZUIGroupAssociation[];
+async getAssociations(
+	nodeId: number,
+	refresh = false,
+): Promise<ZUIGroupAssociation[]>;
 ```
 
 Get an array of current [associations](https://zwave-js.github.io/node-zwave-js/#/api/controller?id=association-interface) of a specific group.
@@ -120,7 +234,8 @@ Payload:
 ```json
 {
 	"args": [
-		nodeId
+		nodeId,
+		refresh
 	]
 }
 ```
@@ -133,8 +248,8 @@ Payload:
 async addAssociations(
 	source: AssociationAddress,
 	groupId: number,
-	associations: AssociationAddress[]
-): Promise<void>;
+	associations: AssociationAddress[],
+): Promise<boolean>;
 ```
 
 Add a node to the array of specified [associations](https://zwave-js.github.io/node-zwave-js/#/api/controller?id=association-interface).
@@ -164,7 +279,7 @@ Payload:
 async removeAssociations(
 	source: AssociationAddress,
 	groupId: number,
-	associations: AssociationAddress[]
+	associations: AssociationAddress[],
 ): Promise<void>;
 ```
 
@@ -208,6 +323,62 @@ Payload:
 {
 	"args": [
 		nodeId
+	]
+}
+```
+
+</details>
+
+#### `syncNodeDateAndTime`
+
+```ts
+syncNodeDateAndTime(nodeId: number, date = new Date()): Promise<boolean>;
+```
+
+Setting the date and time on a node could be hard, this helper method will set it using the date provided (default to now).
+
+The following CCs will be used (when supported or necessary) in this process:
+
+- Time Parameters CC
+- Clock CC
+- Time CC
+- Schedule Entry Lock CC (for setting the timezone).
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/syncNodeDateAndTime/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		date
+	]
+}
+```
+
+</details>
+
+#### `manuallyIdleNotificationValue`
+
+```ts
+manuallyIdleNotificationValue(valueId: ZUIValueId): void;
+```
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/manuallyIdleNotificationValue/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		valueId
 	]
 }
 ```
@@ -265,9 +436,10 @@ Payload:
 #### `getNodeNeighbors`
 
 ```ts
-getNodeNeighbors(
+async getNodeNeighbors(
 	nodeId: number,
-	dontThrow: boolean
+	preventThrow = false,
+	emitNodeUpdate = true,
 ): Promise<readonly number[]>;
 ```
 
@@ -284,7 +456,33 @@ Payload:
 {
 	"args": [
 		nodeId,
-		dontThrow
+		preventThrow,
+		emitNodeUpdate
+	]
+}
+```
+
+</details>
+
+#### `discoverNodeNeighbors`
+
+```ts
+async discoverNodeNeighbors(nodeId: number): Promise<boolean>;
+```
+
+Instructs a node to (re-)discover its neighbors.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/discoverNodeNeighbors/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
 	]
 }
 ```
@@ -363,6 +561,33 @@ Payload:
 	"args": [
 		nodeid,
 		loc
+	]
+}
+```
+
+</details>
+
+#### `setNodeDefaultSetValueOptions`
+
+```ts
+setNodeDefaultSetValueOptions(
+	nodeId: number,
+	props: Pick<ZUINode, 'defaultTransitionDuration' | 'defaultVolume'>,
+): void;
+```
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/setNodeDefaultSetValueOptions/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		props
 	]
 }
 ```
@@ -499,7 +724,7 @@ async _addSceneValue(
 	sceneid: number,
 	valueId: ZUIValueIdScene,
 	value: any,
-	timeout: number
+	timeout: number,
 ): Promise<any>;
 ```
 
@@ -742,6 +967,31 @@ Payload:
 
 </details>
 
+#### `shutdownZwaveAPI`
+
+```ts
+async shutdownZwaveAPI(): Promise<boolean>;
+```
+
+If supported by the controller, this instructs it to shut down the Z-Wave API, so it can safely be removed from power. If this is successful (returns `true`), the driver instance will be destroyed and can no longer be used.
+
+> [!WARNING] The controller will have to be restarted manually (e.g. by unplugging and plugging it back in) before it can be used again!.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/shutdownZwaveAPI/set`
+
+Payload:
+
+```json
+{
+	"args": []
+}
+```
+
+</details>
+
 #### `pollValue`
 
 ```ts
@@ -773,7 +1023,10 @@ Payload:
 async replaceFailedNode(
 	nodeId: number,
 	strategy: InclusionStrategy = InclusionStrategy.Security_S2,
-	options?: { qrString?: string; provisioning?: PlannedProvisioningEntry }
+	options?: {
+		qrString?: string
+		provisioning?: PlannedProvisioningEntry
+	},
 ): Promise<boolean>;
 ```
 
@@ -803,8 +1056,8 @@ Payload:
 ```ts
 async getAvailableFirmwareUpdates(
 	nodeId: number,
-	options?: GetFirmwareUpdatesOptions
-): Promise<import("/home/daniel/GitProjects/zwave-js-ui/node_modules/zwave-js/build/index").FirmwareUpdateInfo[]>;
+	options?: GetFirmwareUpdatesOptions,
+): Promise<{ version: string; changelog: string; channel: "stable" | "beta"; files: FirmwareUpdateFileInfo[]; downgrade: boolean; normalizedVersion: string; device: { manufacturerId: number; productType: number; productId: number; firmwareVersion: string; rfRegion?: RFRegion; }; }[]>;
 ```
 
 <details>
@@ -828,7 +1081,7 @@ Payload:
 #### `firmwareUpdateOTA`
 
 ```ts
-async firmwareUpdateOTA(nodeId: number, updates: FirmwareUpdateFileInfo[]): Promise<boolean>;
+async firmwareUpdateOTA(nodeId: number, updateInfo: FirmwareUpdateInfo): Promise<FirmwareUpdateResult>;
 ```
 
 <details>
@@ -842,36 +1095,7 @@ Payload:
 {
 	"args": [
 		nodeId,
-		updates
-	]
-}
-```
-
-</details>
-
-#### `beginOTAFirmwareUpdate`
-
-```ts
-async beginOTAFirmwareUpdate(
-	nodeId: number,
-	update: FirmwareUpdateFileInfo
-): Promise<void>;
-```
-
-.
-
-<details>
-<summary>Mqtt usage</summary>
-
-Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/beginOTAFirmwareUpdate/set`
-
-Payload:
-
-```json
-{
-	"args": [
-		nodeId,
-		update
+		updateInfo
 	]
 }
 ```
@@ -883,7 +1107,7 @@ Payload:
 ```ts
 async setPowerlevel(
 	powerlevel: number,
-	measured0dBm: number
+	measured0dBm: number,
 ): Promise<boolean>;
 ```
 
@@ -940,7 +1164,7 @@ async startInclusion(
 		name?: string
 		dsk?: string
 		location?: string
-	}
+	},
 ): Promise<boolean>;
 ```
 
@@ -970,7 +1194,7 @@ Payload:
 async startExclusion(
 	options: ExclusionOptions = {
 		strategy: ExclusionStrategy.DisableProvisioningEntry,
-	}
+	},
 ): Promise<boolean>;
 ```
 
@@ -1039,18 +1263,405 @@ Payload:
 
 </details>
 
-#### `healNode`
+#### `rebuildNodeRoutes`
 
 ```ts
-async healNode(nodeId: number): Promise<boolean>;
+async rebuildNodeRoutes(nodeId: number): Promise<boolean>;
 ```
 
-Heal a node.
+Rebuild node routes.
 
 <details>
 <summary>Mqtt usage</summary>
 
-Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/healNode/set`
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/rebuildNodeRoutes/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
+	]
+}
+```
+
+</details>
+
+#### `getPriorityReturnRoute`
+
+```ts
+getPriorityReturnRoute(nodeId: number, destinationId: number): Route;
+```
+
+Get priority return route from nodeId to destinationId.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/getPriorityReturnRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		destinationId
+	]
+}
+```
+
+</details>
+
+#### `assignPriorityReturnRoute`
+
+```ts
+async assignPriorityReturnRoute(
+	nodeId: number,
+	destinationNodeId: number,
+	repeaters: number[],
+	routeSpeed: ZWaveDataRate,
+): Promise<boolean>;
+```
+
+Assigns a priority return route from nodeId to destinationId.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/assignPriorityReturnRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		destinationNodeId,
+		repeaters,
+		routeSpeed
+	]
+}
+```
+
+</details>
+
+#### `getPrioritySUCReturnRoute`
+
+```ts
+getPrioritySUCReturnRoute(nodeId: number): Route;
+```
+
+Get priority return route from node to controller.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/getPrioritySUCReturnRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
+	]
+}
+```
+
+</details>
+
+#### `assignPrioritySUCReturnRoute`
+
+```ts
+async assignPrioritySUCReturnRoute(
+	nodeId: number,
+	repeaters: number[],
+	routeSpeed: ZWaveDataRate,
+): Promise<boolean>;
+```
+
+Assign a priority return route from node to controller.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/assignPrioritySUCReturnRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		repeaters,
+		routeSpeed
+	]
+}
+```
+
+</details>
+
+#### `getCustomReturnRoute`
+
+```ts
+getCustomReturnRoute(nodeId: number, destinationId: number): Route[];
+```
+
+Get custom return routes from nodeId to destinationId.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/getCustomReturnRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		destinationId
+	]
+}
+```
+
+</details>
+
+#### `assignCustomReturnRoutes`
+
+```ts
+async assignCustomReturnRoutes(
+	nodeId: number,
+	destinationNodeId: number,
+	routes: Route[],
+	priorityRoute?: Route,
+): Promise<boolean>;
+```
+
+Assigns custom return routes from a node to a destination node.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/assignCustomReturnRoutes/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		destinationNodeId,
+		routes,
+		priorityRoute
+	]
+}
+```
+
+</details>
+
+#### `getCustomSUCReturnRoute`
+
+```ts
+getCustomSUCReturnRoute(nodeId: number): Route[];
+```
+
+Get custom return routes from node to controller.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/getCustomSUCReturnRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
+	]
+}
+```
+
+</details>
+
+#### `assignCustomSUCReturnRoutes`
+
+```ts
+async assignCustomSUCReturnRoutes(
+	nodeId: number,
+	routes: Route[],
+	priorityRoute?: Route,
+): Promise<boolean>;
+```
+
+Assigns up to 4 return routes to a node to the controller.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/assignCustomSUCReturnRoutes/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		routes,
+		priorityRoute
+	]
+}
+```
+
+</details>
+
+#### `getPriorityRoute`
+
+```ts
+async getPriorityRoute(nodeId: number): Promise<{ routeKind: RouteKind.LWR | RouteKind.NLWR | RouteKind.Application; repeaters: number[]; routeSpeed: ZWaveDataRate; }>;
+```
+
+Returns the priority route for a given node ID.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/getPriorityRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
+	]
+}
+```
+
+</details>
+
+#### `deleteReturnRoutes`
+
+```ts
+async deleteReturnRoutes(nodeId: number): Promise<boolean>;
+```
+
+Delete ALL previously assigned return routes.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/deleteReturnRoutes/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
+	]
+}
+```
+
+</details>
+
+#### `deleteSUCReturnRoutes`
+
+```ts
+async deleteSUCReturnRoutes(nodeId: number): Promise<boolean>;
+```
+
+Delete ALL previously assigned return routes to the controller.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/deleteSUCReturnRoutes/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
+	]
+}
+```
+
+</details>
+
+#### `assignReturnRoutes`
+
+```ts
+async assignReturnRoutes(nodeId: number, destinationNodeId: number): Promise<boolean>;
+```
+
+Ask the controller to automatically assign to node nodeId a set of routes to node destinationNodeId.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/assignReturnRoutes/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		destinationNodeId
+	]
+}
+```
+
+</details>
+
+#### `setPriorityRoute`
+
+```ts
+async setPriorityRoute(
+	nodeId: number,
+	repeaters: number[],
+	routeSpeed: ZWaveDataRate,
+): Promise<boolean>;
+```
+
+Sets the priority route for a given node ID.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/setPriorityRoute/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId,
+		repeaters,
+		routeSpeed
+	]
+}
+```
+
+</details>
+
+#### `removePriorityRoute`
+
+```ts
+async removePriorityRoute(nodeId: number): Promise<boolean>;
+```
+
+Remove priority route for a given node ID.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/removePriorityRoute/set`
 
 Payload:
 
@@ -1069,7 +1680,7 @@ Payload:
 ```ts
 async checkLifelineHealth(
 	nodeId: number,
-	rounds = 5
+	rounds = 5,
 ): Promise<LifelineHealthCheckSummary & { targetNodeId: number }>;
 ```
 
@@ -1099,7 +1710,7 @@ Payload:
 async checkRouteHealth(
 	nodeId: number,
 	targetNodeId: number,
-	rounds = 5
+	rounds = 5,
 ): Promise<RouteHealthCheckSummary & { targetNodeId: number }>;
 ```
 
@@ -1118,6 +1729,31 @@ Payload:
 		nodeId,
 		targetNodeId,
 		rounds
+	]
+}
+```
+
+</details>
+
+#### `abortHealthCheck`
+
+```ts
+abortHealthCheck(nodeId: number): void;
+```
+
+Aborts an ongoing health check if one is currently in progress.
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/abortHealthCheck/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		nodeId
 	]
 }
 ```
@@ -1203,7 +1839,9 @@ Payload:
 #### `firmwareUpdateOTW`
 
 ```ts
-async firmwareUpdateOTW(file: FwFile): Promise<boolean>;
+async firmwareUpdateOTW(
+	file: FwFile,
+): Promise<ControllerFirmwareUpdateResult>;
 ```
 
 Used to trigger an update of controller FW.
@@ -1228,7 +1866,10 @@ Payload:
 #### `updateFirmware`
 
 ```ts
-updateFirmware(nodeId: number, files: FwFile[]): Promise<boolean>;
+updateFirmware(
+	nodeId: number,
+	files: FwFile[],
+): Promise<FirmwareUpdateResult>;
 ```
 
 <details>
@@ -1243,39 +1884,6 @@ Payload:
 	"args": [
 		nodeId,
 		files
-	]
-}
-```
-
-</details>
-
-#### `beginFirmwareUpdate`
-
-```ts
-beginFirmwareUpdate(
-	nodeId: number,
-	fileName: string,
-	data: Buffer,
-	target: number
-): Promise<void>;
-```
-
-Start a firmware update.
-
-<details>
-<summary>Mqtt usage</summary>
-
-Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/beginFirmwareUpdate/set`
-
-Payload:
-
-```json
-{
-	"args": [
-		nodeId,
-		fileName,
-		data,
-		target
 	]
 }
 ```
@@ -1305,37 +1913,62 @@ Payload:
 
 </details>
 
-#### `beginHealingNetwork`
+#### `dumpNode`
 
 ```ts
-beginHealingNetwork(): boolean;
+dumpNode(nodeId: number): import("/home/daniel/GitProjects/zwave-js-ui/node_modules/zwave-js/build/lib/node/Dump").NodeDump;
 ```
 
 <details>
 <summary>Mqtt usage</summary>
 
-Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/beginHealingNetwork/set`
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/dumpNode/set`
 
 Payload:
 
 ```json
 {
-	"args": []
+	"args": [
+		nodeId
+	]
 }
 ```
 
 </details>
 
-#### `stopHealingNetwork`
+#### `beginRebuildingRoutes`
 
 ```ts
-stopHealingNetwork(): boolean;
+beginRebuildingRoutes(options?: RebuildRoutesOptions): boolean;
 ```
 
 <details>
 <summary>Mqtt usage</summary>
 
-Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/stopHealingNetwork/set`
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/beginRebuildingRoutes/set`
+
+Payload:
+
+```json
+{
+	"args": [
+		options
+	]
+}
+```
+
+</details>
+
+#### `stopRebuildingRoutes`
+
+```ts
+stopRebuildingRoutes(): boolean;
+```
+
+<details>
+<summary>Mqtt usage</summary>
+
+Topic: `zwave/_CLIENTS/ZWAVE_GATEWAY-<mqtt_name>/api/stopRebuildingRoutes/set`
 
 Payload:
 
@@ -1399,7 +2032,7 @@ async sendCommand(
 		commandClass: CommandClasses | keyof typeof CommandClasses
 	},
 	command: string,
-	args: any[]
+	args: any[],
 ): Promise<any>;
 ```
 
@@ -1427,7 +2060,11 @@ Payload:
 #### `writeBroadcast`
 
 ```ts
-async writeBroadcast(valueId: ValueID, value: unknown): Promise<void>;
+async writeBroadcast(
+	valueId: ValueID,
+	value: unknown,
+	options?: SetValueAPIOptions,
+): Promise<void>;
 ```
 
 Send broadcast write request.
@@ -1443,7 +2080,8 @@ Payload:
 {
 	"args": [
 		valueId,
-		value
+		value,
+		options
 	]
 }
 ```
@@ -1453,7 +2091,12 @@ Payload:
 #### `writeMulticast`
 
 ```ts
-async writeMulticast(nodes: number[], valueId: ZUIValueId, value: unknown): Promise<void>;
+async writeMulticast(
+	nodes: number[],
+	valueId: ZUIValueId,
+	value: unknown,
+	options?: SetValueAPIOptions,
+): Promise<void>;
 ```
 
 Send multicast write request to a group of nodes.
@@ -1470,7 +2113,8 @@ Payload:
 	"args": [
 		nodes,
 		valueId,
-		value
+		value,
+		options
 	]
 }
 ```
@@ -1483,8 +2127,8 @@ Payload:
 async writeValue(
 	valueId: ZUIValueId,
 	value: any,
-	options?: SetValueAPIOptions
-): Promise<boolean>;
+	options?: SetValueAPIOptions,
+): Promise<SetValueResult>;
 ```
 
 Set a value of a specific zwave valueId.
@@ -1599,7 +2243,7 @@ Payload:
 #### `restoreNVM`
 
 ```ts
-async restoreNVM(data: Buffer): Promise<void>;
+async restoreNVM(data: Buffer, useRaw = false): Promise<void>;
 ```
 
 <details>
@@ -1612,7 +2256,8 @@ Payload:
 ```json
 {
 	"args": [
-		data
+		data,
+		useRaw
 	]
 }
 ```
@@ -1716,7 +2361,7 @@ Payload:
 #### `provisionSmartStartNode`
 
 ```ts
-provisionSmartStartNode(entry: PlannedProvisioningEntry | string): void;
+provisionSmartStartNode(entry: PlannedProvisioningEntry | string): PlannedProvisioningEntry;
 ```
 
 <details>
@@ -1741,7 +2386,7 @@ Payload:
 ```ts
 async updateControllerNodeProps(
 	node?: ZUINode,
-	props: Array<'powerlevel' | 'RFRegion'> = ['powerlevel', 'RFRegion']
+	props: Array<'powerlevel' | 'RFRegion'> = ['powerlevel', 'RFRegion'],
 ): Promise<void>;
 ```
 
@@ -1796,7 +2441,7 @@ Will work in the same way.
 
 If you would like to send a write request with options like `transitionDurtation` and `volume` you can do it by using a JSON payload:
 
-Topic: `zwave/office/light/38/0/targetValue`
+Topic: `zwave/office/light/38/0/targetValue/set`
 
 Payload:
 

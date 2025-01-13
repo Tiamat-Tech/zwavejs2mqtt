@@ -100,10 +100,23 @@
 						{{ item.object_id }}
 					</template>
 					<template v-slot:[`item.persistent`]="{ item }">
-						{{ item.persistent ? 'Yes' : 'No' }}
+						<v-checkbox
+							v-model="item.persistent"
+							@click.stop
+							@change="updateDevice(item)"
+							hide-details
+							dense
+						></v-checkbox>
 					</template>
 					<template v-slot:[`item.ignoreDiscovery`]="{ item }">
-						{{ item.ignoreDiscovery ? 'Disabled' : 'Enabled' }}
+						<v-btn
+							@click.stop="toggleField(item, 'ignoreDiscovery')"
+							:color="item.ignoreDiscovery ? 'error' : 'success'"
+							rounded
+							x-small
+						>
+							{{ item.ignoreDiscovery ? 'Disabled' : 'Enabled' }}
+						</v-btn>
 					</template>
 				</v-data-table>
 			</v-col>
@@ -115,7 +128,7 @@
 							color="blue darken-1"
 							:disabled="errorDevice"
 							text
-							@click="addDevice"
+							@click="addDevice()"
 							>Add</v-btn
 						>
 					</template>
@@ -129,7 +142,7 @@
 							color="blue darken-1"
 							:disabled="errorDevice"
 							text
-							@click="updateDevice"
+							@click="updateDeviceJSON()"
 							>Update</v-btn
 						>
 					</template>
@@ -182,15 +195,17 @@
 </template>
 
 <script>
-import { inboundEvents as socketActions } from '@/../server/lib/SocketEvents'
-import { mapState } from 'pinia'
+import { inboundEvents as socketActions } from '@server/lib/SocketEvents'
+import { mapActions, mapState } from 'pinia'
 import useBaseStore from '../../stores/base'
+import InstancesMixin from '../../mixins/InstancesMixin'
 
 export default {
 	props: {
 		node: Object,
 		socket: Object,
 	},
+	mixins: [InstancesMixin],
 	data() {
 		return {
 			deviceJSON: '',
@@ -212,7 +227,7 @@ export default {
 			if (this.node && this.node.hassDevices) {
 				for (const id in this.node.hassDevices) {
 					const d = JSON.parse(
-						JSON.stringify(this.node.hassDevices[id])
+						JSON.stringify(this.node.hassDevices[id]),
 					)
 					d.id = id
 					devices.push(d)
@@ -230,102 +245,184 @@ export default {
 		},
 	},
 	methods: {
+		...mapActions(useBaseStore, ['showSnackbar']),
+		async sendAction(data = {}) {
+			return new Promise((resolve) => {
+				if (this.socket.connected) {
+					this.showSnackbar(`API ${data.apiName} called`, 'info')
+
+					this.socket.emit(socketActions.hass, data, (response) => {
+						if (!response.success) {
+							this.showSnackbar(
+								`Error while calling ${data.apiName}: ${response.message}`,
+								'error',
+							)
+						}
+						resolve(response)
+					})
+				} else {
+					resolve({
+						success: false,
+						message: 'Socket disconnected',
+					})
+					this.showSnackbar('Socket disconnected', 'error')
+				}
+			})
+		},
 		selectDevice(item, row) {
 			row.select(!row.isSelected)
 			this.selectedDevice = this.selectedDevice === item ? null : item
 		},
-		addDevice() {
+		async addDevice() {
 			if (!this.errorDevice) {
 				const newDevice = JSON.parse(this.deviceJSON)
-				this.socket.emit(socketActions.hass, {
+				const response = await this.sendAction({
 					apiName: 'add',
 					device: newDevice,
 					nodeId: this.node.id,
 				})
+
+				if (response.success) {
+					this.showSnackbar(`Device ${newDevice.id} added`, 'success')
+				}
 			}
 		},
 		async deleteDevice() {
 			const device = this.selectedDevice
 			if (
 				device &&
-				(await this.$listeners.showConfirm(
+				(await this.app.confirm(
 					'Attention',
 					'Are you sure you want to delete selected device?',
-					'alert'
+					'alert',
 				))
 			) {
-				this.socket.emit(socketActions.hass, {
+				const response = await this.sendAction({
 					apiName: 'delete',
 					device: device,
 					nodeId: this.node.id,
 				})
+
+				if (response.success) {
+					this.showSnackbar(`Device ${device.id} deleted`, 'success')
+				}
 			}
 		},
 		async disableDiscovery() {
 			if (
 				this.node &&
-				(await this.$listeners.showConfirm(
+				(await this.app.confirm(
 					'Rediscover node',
-					'Are you sure you want to disable discovery of all values? In order to make this persistent remember to click on Store'
+					'Are you sure you want to disable discovery of all values? In order to make this persistent remember to click on Store',
 				))
 			) {
-				this.socket.emit(socketActions.hass, {
+				const response = await this.sendAction({
 					apiName: 'disableDiscovery',
 					nodeId: this.node.id,
 				})
+
+				if (response.success) {
+					this.showSnackbar(
+						`Discovery disabled for node ${this.node.id}`,
+						'success',
+					)
+				}
 			}
 		},
 		async rediscoverDevice() {
 			const device = this.selectedDevice
 			if (
 				device &&
-				(await this.$listeners.showConfirm(
+				(await this.app.confirm(
 					'Rediscover Device',
-					'Are you sure you want to re-discover selected device?'
+					'Are you sure you want to re-discover selected device?',
 				))
 			) {
-				this.socket.emit(socketActions.hass, {
+				const response = await this.sendAction({
 					apiName: 'discover',
 					device: device,
 					nodeId: this.node.id,
 				})
+
+				if (response.success) {
+					this.showSnackbar(
+						`Device ${device.id} re-discovered`,
+						'success',
+					)
+				}
 			}
 		},
 		async rediscoverNode() {
 			if (
 				this.node &&
-				(await this.$listeners.showConfirm(
+				(await this.app.confirm(
 					'Rediscover node',
-					'Are you sure you want to re-discover all node values?'
+					'Are you sure you want to re-discover all node values?',
 				))
 			) {
-				this.socket.emit(socketActions.hass, {
+				const response = await this.sendAction({
 					apiName: 'rediscoverNode',
 					nodeId: this.node.id,
 				})
+
+				if (response.success) {
+					this.showSnackbar(
+						`Node ${this.node.id} re-discovered`,
+						'success',
+					)
+				}
 			}
 		},
-		storeDevices(remove) {
-			this.socket.emit(socketActions.hass, {
+		async storeDevices(remove) {
+			const response = await this.sendAction({
 				apiName: 'store',
 				devices: this.node.hassDevices,
 				nodeId: this.node.id,
 				remove: remove,
 			})
+
+			if (response.success) {
+				this.showSnackbar(
+					`Devices stored for node ${this.node.id}`,
+					'success',
+				)
+			}
 		},
-		updateDevice() {
+		async updateDeviceJSON() {
 			if (!this.errorDevice) {
 				const updated = JSON.parse(this.deviceJSON)
 				this.$set(
 					this.node.hassDevices,
 					this.selectedDevice.id,
-					updated
+					updated,
 				)
-				this.socket.emit(socketActions.hass, {
-					apiName: 'update',
-					device: updated,
-					nodeId: this.node.id,
-				})
+				await this.updateDevice(updated)
+			}
+		},
+		async toggleField(device, field) {
+			device[field] = !device[field]
+			await this.updateDevice(device)
+		},
+		async updateDevice(device) {
+			const response = await this.sendAction({
+				apiName: 'update',
+				device,
+				nodeId: this.node.id,
+			})
+
+			if (response.success) {
+				this.node.hassDevices = {
+					...this.node.hassDevices,
+					[device.id]: device,
+				}
+
+				if (
+					this.selectedDevice &&
+					this.selectedDevice.id === device.id
+				) {
+					this.deviceJSON = JSON.stringify(device, null, 2)
+				}
+				this.showSnackbar(`Device ${device.id} updated`, 'success')
 			}
 		},
 		validJSONdevice() {

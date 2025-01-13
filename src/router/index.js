@@ -2,15 +2,17 @@ import Vue from 'vue'
 import Router from 'vue-router'
 
 // DON'T use lazy loading here, it would break application running behind a proxy
-import ControlPanel from '@/views/ControlPanel'
-import Settings from '@/views/Settings'
-import Mesh from '@/views/Mesh'
-import Store from '@/views/Store'
-import Scenes from '@/views/Scenes'
-import Debug from '@/views/Debug'
-import Login from '@/views/Login'
-import ErrorPage from '@/views/ErrorPage'
-import SmartStart from '@/views/SmartStart'
+const ControlPanel = () => import('@/views/ControlPanel.vue')
+const Settings = () => import('@/views/Settings.vue')
+const Mesh = () => import('@/views/Mesh.vue')
+const Store = () => import('@/views/Store.vue')
+const Scenes = () => import('@/views/Scenes.vue')
+const Debug = () => import('@/views/Debug.vue')
+const Login = () => import('@/views/Login.vue')
+const ErrorPage = () => import('@/views/ErrorPage.vue')
+const SmartStart = () => import('@/views/SmartStart.vue')
+const ControllerChart = () => import('@/views/ControllerChart.vue')
+const Zniffer = () => import('@/views/Zniffer.vue')
 
 import ConfigApis from '../apis/ConfigApis'
 import useBaseStore from '../stores/base'
@@ -27,12 +29,14 @@ export const Routes = {
 	store: '/store',
 	mesh: '/mesh',
 	smartStart: '/smart-start',
+	controllerChart: '/controller-chart',
+	zniffer: '/zniffer',
 }
 
 Routes.main = Routes.controlPanel
 
 const router = new Router({
-	mode: 'history',
+	mode: 'hash',
 	routes: [
 		{
 			path: Routes.login,
@@ -48,6 +52,15 @@ const router = new Router({
 			path: Routes.controlPanel,
 			name: 'Control Panel',
 			component: ControlPanel,
+			props: true,
+			meta: {
+				requiresAuth: true,
+			},
+		},
+		{
+			path: Routes.zniffer,
+			name: 'Zniffer',
+			component: Zniffer,
 			props: true,
 			meta: {
 				requiresAuth: true,
@@ -107,6 +120,15 @@ const router = new Router({
 				requiresAuth: true,
 			},
 		},
+		{
+			path: Routes.controllerChart,
+			name: 'Controller Chart',
+			component: ControllerChart,
+			props: true,
+			meta: {
+				requiresAuth: true,
+			},
+		},
 	],
 })
 
@@ -156,7 +178,7 @@ router.beforeEach(async (to, from, next) => {
 					logged = false
 					localStorage.removeItem('logged')
 				} else {
-					store.setUser(response.user)
+					store.onUserLogged(response.user)
 				}
 			} else user = {}
 		} catch (error) {

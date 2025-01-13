@@ -2,19 +2,20 @@ import chai, { expect } from 'chai'
 import proxyquire from 'proxyquire'
 import sinon, { SinonStub } from 'sinon'
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-chai.use(require('sinon-chai'))
+import sinonChai from 'sinon-chai'
+
+chai.use(sinonChai)
 
 declare let process: NodeJS.Process & {
-	pkg: boolean
+	pkg?: boolean
 }
 const snapshotPath = '/snapshot/zui'
 
 describe('#utils', () => {
 	describe('#getPath()', () => {
-		const utils = proxyquire('../../lib/utils', {
-			'app-root-path': {
-				toString: () => snapshotPath,
+		const utils = proxyquire('../../api/lib/utils', {
+			path: {
+				resolve: () => snapshotPath,
 			},
 		})
 
@@ -37,15 +38,12 @@ describe('#utils', () => {
 	})
 
 	describe('#joinPath()', () => {
-		let path: { join: SinonStub }
+		let path: { join: SinonStub; resolve: () => string }
 		let utils
 
 		before(() => {
-			path = { join: sinon.stub() }
-			utils = proxyquire('../../lib/utils', {
-				'app-root-path': {
-					toString: () => snapshotPath,
-				},
+			path = { join: sinon.stub(), resolve: () => snapshotPath }
+			utils = proxyquire('../../api/lib/utils', {
 				path: path,
 			})
 		})
@@ -62,7 +60,7 @@ describe('#utils', () => {
 			utils.joinPath(true, 'bar')
 			return expect(path.join).to.have.been.calledWithExactly(
 				snapshotPath,
-				'bar'
+				'bar',
 			)
 		})
 	})

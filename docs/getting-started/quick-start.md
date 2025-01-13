@@ -24,7 +24,7 @@ docker run --rm -it -p 8091:8091 -p 3000:3000 --device=/dev/serial/by-id/insert_
 
 # As a service
 wget https://raw.githubusercontent.com/zwave-js/zwave-js-ui/master/docker/docker-compose.yml
-docker-compose up
+docker-compose up -d
 ```
 
 > [!NOTE]
@@ -57,3 +57,9 @@ A [complete](usage/setup.md) guide to the settings is available. At minimum, you
 5. **Disable MQTT Gateway** if not using MQTT [On the Settings Page]
 6. **Configure Home Assistant if using Home Assistant** [Settings -> Home Assistant -> WS Server]
 7. **Enable Statistics (please!)** [Settings -> Z-Wave -> Enable Statistics]
+
+## Hardware setup
+
+Like described in [this](https://www.youtube.com/watch?v=tHqZhNcFEvA) video USB sticks directly connected to USB ports can cause interference and so affecting the communication with the Z-Wave devices. To avoid this, it is recommended to use a USB extension cable to move the stick away from the computer.
+
+For a full list of thrubleshooting tips, check [here](troubleshooting/troubleshooting.md)

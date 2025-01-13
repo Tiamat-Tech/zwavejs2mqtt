@@ -14,7 +14,7 @@ A plugin is imported in Z-Wave JS UI using `require(pluginName)(context)` where 
 In order to add a plugin you have to specify the absolute/relative path to it or, if it is available as an npm package, you can install it using the command:
 
 ```bash
-yarn i my-awesome-plugin
+npm i my-awesome-plugin
 ```
 
 ## Developing custom Plugins
@@ -43,7 +43,7 @@ MyPlugin.prototype.destroy = async function () {
 module.export = MyPlugin
 ```
 
-Types and interfaces are available [here](https://github.com/zwave-js/zwave-js-ui/blob/master/lib/CustomPlugin.ts)
+Types and interfaces are available [here](https://github.com/zwave-js/zwave-js-ui/blob/master/api/lib/CustomPlugin.ts)
 
 ## Available plugins
 

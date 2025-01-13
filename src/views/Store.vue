@@ -21,7 +21,7 @@
 					style="max-height: calc(100vh - 64px); overflow-y: auto"
 				>
 					<template v-slot:prepend="{ item, open }">
-						<v-icon color="#FFC107" v-if="!item.ext">
+						<v-icon color="#FFC107" v-if="item.children">
 							{{ open ? 'folder_open' : 'folder' }}
 						</v-icon>
 						<v-icon color="blue" v-else> text_snippet </v-icon>
@@ -34,22 +34,72 @@
 					</template>
 					<template v-slot:append="{ item }">
 						<v-row justify-end class="ma-1">
+							<v-menu v-if="item.children" offset-y>
+								<template v-slot:activator="{ on }">
+									<v-icon v-on="on">more_vert</v-icon>
+								</template>
+								<v-list class="py-0" dense>
+									<v-list-item
+										dense
+										@click.stop="writeFile(item.path, true)"
+									>
+										<v-list-item-icon>
+											<v-icon color="yellow"
+												>create_new_folder</v-icon
+											>
+										</v-list-item-icon>
+										<v-list-item-title
+											>Create New
+											Folder</v-list-item-title
+										>
+									</v-list-item>
+									<v-list-item
+										dense
+										@click.stop="
+											writeFile(item.path, false)
+										"
+									>
+										<v-list-item-icon>
+											<v-icon color="primary"
+												>post_add</v-icon
+											>
+										</v-list-item-icon>
+										<v-list-item-title
+											>Add File</v-list-item-title
+										>
+									</v-list-item>
+									<v-list-item
+										dense
+										v-if="!item.isRoot"
+										@click.stop="deleteFile(item)"
+									>
+										<v-list-item-icon>
+											<v-icon color="red">delete</v-icon>
+										</v-list-item-icon>
+										<v-list-item-title
+											>Delete</v-list-item-title
+										>
+									</v-list-item>
+									<v-list-item
+										dense
+										@click.stop="uploadFile(item)"
+									>
+										<v-list-item-icon>
+											<v-icon color="orange"
+												>upload</v-icon
+											>
+										</v-list-item-icon>
+										<v-list-item-title
+											>Upload File</v-list-item-title
+										>
+									</v-list-item>
+								</v-list>
+							</v-menu>
+							<!-- only show delete -->
 							<v-icon
-								v-if="item.children"
-								@click.stop="writeFile(item.path, true)"
-								color="yellow"
-								>create_new_folder</v-icon
-							>
-							<v-icon
-								v-if="item.children"
-								@click.stop="writeFile(item.path, false)"
-								color="primary"
-								>post_add</v-icon
-							>
-							<v-icon
-								v-if="!item.isRoot"
-								@click.stop="deleteFile(item)"
+								v-else
 								color="red"
+								@click.stop="deleteFile(item)"
 								>delete</v-icon
 							>
 						</v-row>
@@ -82,7 +132,7 @@
 								dark
 								small
 								color="green"
-								@click="restoreZip"
+								@click="restoreZip()"
 								v-bind="attrs"
 								v-on="on"
 							>
@@ -90,6 +140,23 @@
 							</v-btn>
 						</template>
 						<span>Restore</span>
+					</v-tooltip>
+
+					<v-tooltip left>
+						<template v-slot:activator="{ on, attrs }">
+							<v-btn
+								fab
+								dark
+								small
+								color="orange"
+								@click="uploadFile()"
+								v-bind="attrs"
+								v-on="on"
+							>
+								<v-icon>upload</v-icon>
+							</v-btn>
+						</template>
+						<span>Upload File</span>
 					</v-tooltip>
 
 					<v-tooltip left>
@@ -281,7 +348,6 @@ prism-editor-wrapper :deep(.prism-editor__textarea) {
 import ConfigApis from '@/apis/ConfigApis'
 
 // import Prism Editor
-import { PrismEditor } from 'vue-prism-editor'
 import 'vue-prism-editor/dist/prismeditor.min.css' // import the styles somewhere
 
 // import highlighting library (you can use any library you want just return html string)
@@ -291,11 +357,17 @@ import 'prismjs/components/prism-javascript'
 import 'prismjs/themes/prism-tomorrow.css'
 import { mapActions } from 'pinia'
 import useBaseStore from '../stores/base.js'
+import logger from '../lib/logger.js'
+import InstancesMixin from '../mixins/InstancesMixin.js'
+
+const log = logger.get('Store')
 
 export default {
 	name: 'Store',
+	mixins: [InstancesMixin],
 	components: {
-		PrismEditor,
+		PrismEditor: () =>
+			import('vue-prism-editor').then((m) => m.PrismEditor),
 	},
 	watch: {
 		selected() {
@@ -307,6 +379,9 @@ export default {
 			if (!this.active.length) return undefined
 
 			return this.active[0]
+		},
+		storePath() {
+			return this.items[0]?.path
 		},
 	},
 	data() {
@@ -327,10 +402,10 @@ export default {
 		...mapActions(useBaseStore, ['showSnackbar']),
 		async deleteFile(item) {
 			if (
-				await this.$listeners.showConfirm(
+				await this.app.confirm(
 					'Attention',
-					`Are you sure you want to delete the file ${item.name}?`,
-					'alert'
+					`Are you sure you want to delete the file <code>${item.name}</code>?`,
+					'alert',
 				)
 			) {
 				try {
@@ -338,7 +413,7 @@ export default {
 					if (data.success) {
 						this.showSnackbar(
 							'File deleted successfully',
-							'success'
+							'success',
 						)
 						await this.refreshTree(true)
 					} else {
@@ -352,10 +427,10 @@ export default {
 		async deleteSelected() {
 			const files = this.selectedFiles.map((f) => f.path)
 			if (
-				await this.$listeners.showConfirm(
+				await this.app.confirm(
 					'Attention',
 					`Are you sure you want to delete ${files.length} files?`,
-					'alert'
+					'alert',
 				)
 			) {
 				try {
@@ -363,7 +438,7 @@ export default {
 					if (data.success) {
 						this.showSnackbar(
 							'Files deleted successfully',
-							'success'
+							'success',
 						)
 						await this.refreshTree(true)
 					} else {
@@ -386,7 +461,6 @@ export default {
 			}
 		},
 		async downloadZip(response, defaultName) {
-			console.log(response)
 			const regExp = /filename="([^"]+){1}"/g
 			const fileName =
 				regExp.exec(response.headers['content-disposition'])[1] ||
@@ -397,13 +471,13 @@ export default {
 					new Blob([response.data], {
 						type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 					}),
-					fileName
+					fileName,
 				)
 			} else {
 				const url = window.URL.createObjectURL(
 					new Blob([response.data], {
 						type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-					})
+					}),
 				)
 				const link = document.createElement('a')
 				link.href = url
@@ -419,15 +493,15 @@ export default {
 					.split('.')
 					.slice(0, -1)
 					.join('.')
-				this.$listeners.export(
+				this.app.exportConfiguration(
 					this.fileContent,
 					fileName,
-					this.selected.ext
+					this.selected.ext,
 				)
 			}
 		},
 		async backupStore() {
-			const result = await this.$listeners.showConfirm(
+			const result = await this.app.confirm(
 				'Backup store',
 				'Are you sure you want to backup the store? This backup will contain all useful files and settings.',
 				'info',
@@ -435,7 +509,7 @@ export default {
 					width: 500,
 					cancelText: 'No',
 					confirmText: 'Yes',
-				}
+				},
 			)
 
 			if (result) {
@@ -444,7 +518,7 @@ export default {
 
 					await this.downloadZip(
 						response,
-						`store-backup_${Date.now()}.zip`
+						`store-backup_${Date.now()}.zip`,
 					)
 
 					this.refreshTree()
@@ -454,33 +528,70 @@ export default {
 			}
 		},
 		async restoreZip() {
-			const restore = await this.$listeners.showConfirm(
-				'Restore zip',
-				'',
-				'info',
-				{
-					confirmText: 'Restore',
-					inputs: [
-						{
-							type: 'file',
-							label: 'Zip file',
-							required: true,
-							key: 'file',
-							accept: 'application/zip',
-						},
-					],
-				}
-			)
+			const restore = await this.app.confirm('Restore zip', '', 'info', {
+				confirmText: 'Restore',
+				inputs: [
+					{
+						type: 'file',
+						label: 'Zip file',
+						required: true,
+						key: 'file',
+						accept: 'application/zip',
+					},
+				],
+			})
 
 			if (restore.file) {
 				try {
 					const formData = new FormData()
-					formData.append('restore', restore.file)
-					const res = await ConfigApis.restoreZip(formData)
+					formData.append('upload', restore.file)
+					formData.append('restore', 'true')
+					const res = await ConfigApis.storeUpload(formData)
 					if (!res.success)
 						throw new Error(res.message || 'Restore failed')
 					await this.refreshTree()
 					this.showSnackbar('Restore successful', 'success')
+				} catch (err) {
+					this.showSnackbar(err.message || err, 'error')
+				}
+			}
+		},
+		async uploadFile(folder) {
+			const folderPath = folder
+				? folder.path.replace(this.storePath, '')
+				: ''
+			const upload = await this.app.confirm(
+				`Upload file`,
+				`Destination folder: <code>${folderPath || 'root'}</code>`,
+				'info',
+				{
+					confirmText: 'Upload',
+					width: 500,
+					inputs: [
+						{
+							type: 'file',
+							label: 'File',
+							required: true,
+							key: 'file',
+						},
+					],
+				},
+			)
+
+			if (upload.file) {
+				try {
+					const formData = new FormData()
+					formData.append('upload', upload.file)
+
+					if (folderPath) {
+						formData.append('folder', folderPath)
+					}
+
+					const res = await ConfigApis.storeUpload(formData)
+					if (!res.success)
+						throw new Error(res.message || 'Upload failed')
+					await this.refreshTree()
+					this.showSnackbar('Upload successful', 'success')
 				} catch (err) {
 					this.showSnackbar(err.message || err, 'error')
 				}
@@ -493,7 +604,7 @@ export default {
 			// create a new file
 			if (isNew) {
 				const text = isDirectory ? 'Directory' : 'File'
-				const { name } = await this.$listeners.showConfirm(
+				const { name } = await this.app.confirm(
 					'New ' + text,
 					'',
 					'info',
@@ -508,7 +619,7 @@ export default {
 								hint: `Insert the ${text} name`,
 							},
 						],
-					}
+					},
 				)
 
 				if (!name) {
@@ -525,10 +636,10 @@ export default {
 
 			if (
 				isNew ||
-				(await this.$listeners.showConfirm(
+				(await this.app.confirm(
 					'Attention',
-					`Are you sure you want to overwrite the content of the file ${this.selected.name}?`,
-					'alert'
+					`Are you sure you want to overwrite the content of the file <code>${this.selected.name}<code>?`,
+					'alert',
 				))
 			) {
 				try {
@@ -538,14 +649,14 @@ export default {
 							path,
 							isNew,
 							isDirectory,
-						}
+						},
 					)
 					if (data.success) {
 						this.showSnackbar(
 							`${isDirectory ? 'Directory' : 'File'} ${
 								isNew ? 'created' : 'updated'
 							} successfully`,
-							'success'
+							'success',
 						)
 						await this.refreshTree()
 					} else {
@@ -571,7 +682,7 @@ export default {
 				try {
 					if (!this.allowedExt.includes(this.selected.ext)) {
 						throw Error(
-							`Preview of .${this.selected.ext} files is not supported`
+							`Preview of .${this.selected.ext} files is not supported`,
 						)
 					}
 					const data = await ConfigApis.getFile(this.selected.path)
@@ -599,9 +710,9 @@ export default {
 			} catch (error) {
 				this.showSnackbar(
 					'Error while fetching store files: ' + error.message,
-					'error'
+					'error',
 				)
-				console.log(error)
+				log.error(error)
 			}
 
 			this.loadingStore = false

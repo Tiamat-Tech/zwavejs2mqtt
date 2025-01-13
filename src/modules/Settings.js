@@ -23,8 +23,8 @@ export class Settings {
 					valStr === 'false'
 						? false
 						: valStr === 'true'
-						? true
-						: defaultVal
+							? true
+							: defaultVal
 				break
 			case 'number':
 				val = valStr && !isNaN(valStr) ? Number(valStr) : defaultVal
@@ -44,6 +44,9 @@ export class Settings {
 						val.constructor === Object)
 						? val
 						: defaultVal
+				break
+			case 'undefined':
+				val = valStr || valStr === '' ? valStr : defaultVal
 				break
 		}
 		return val

@@ -1,0 +1,99 @@
+{
+	// See https://go.microsoft.com/fwlink/?LinkId=733558
+	// for the documentation about the tasks.json format
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "dev",
+			"label": "ViteJS",
+			"detail": "vite",
+			"isBackground": true,
+			"icon": {
+				"id": "server-process",
+				"color": "terminal.ansiBlue"
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"revealProblems": "onProblem",
+				"focus": false,
+				"showReuseMessage": true,
+				"clear": true,
+				"panel": "dedicated"
+			  },
+			  "problemMatcher": [
+				{
+				  "owner": "typescript",
+				  "source": "Typescript",
+				  "fileLocation": "absolute",
+				  "applyTo": "allDocuments",
+				  "background": {
+					"activeOnStart": true
+					// "beginsPattern": "sd",
+					// "endsPattern": " > "
+				  },
+				  "pattern": [
+					{
+					  "regexp": "(ERROR|WARNING)\\(TypeScript\\)  (.*)",
+					  "severity": 1,
+					  "message": 2
+					},
+					{
+					  "regexp": "^ FILE  (.*):(\\d*):(\\d*)$",
+					  "file": 1,
+					  "line": 2,
+					  "column": 3
+					}
+				  ]
+				},
+			],
+		},
+		{
+			"type": "npm",
+			"script": "dev-https",
+			"label": "ViteJS HTTPS",
+			"detail": "vite",
+			"isBackground": true,
+			"icon": {
+				"id": "server-process",
+				"color": "terminal.ansiBlue"
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"revealProblems": "onProblem",
+				"focus": false,
+				"showReuseMessage": true,
+				"clear": true,
+				"panel": "dedicated"
+			  },
+			  "problemMatcher": [
+				{
+				  "owner": "typescript",
+				  "source": "Typescript",
+				  "fileLocation": "absolute",
+				  "applyTo": "allDocuments",
+				  "background": {
+					"activeOnStart": true
+					// "beginsPattern": "sd",
+					// "endsPattern": " > "
+				  },
+				  "pattern": [
+					{
+					  "regexp": "(ERROR|WARNING)\\(TypeScript\\)  (.*)",
+					  "severity": 1,
+					  "message": 2
+					},
+					{
+					  "regexp": "^ FILE  (.*):(\\d*):(\\d*)$",
+					  "file": 1,
+					  "line": 2,
+					  "column": 3
+					}
+				  ]
+				},
+			],
+		}
+	]
+}

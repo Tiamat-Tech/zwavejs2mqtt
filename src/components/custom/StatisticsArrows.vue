@@ -12,24 +12,27 @@
 					:activeColor="node.errorReceive ? 'error' : 'green'"
 					:active="now - node.lastReceive < 200"
 				/>
-				<div>
-					{{
-						node.lastActive
-							? new Date(node.lastActive).toLocaleString()
-							: 'Never'
-					}}
+				<div class="text-caption">
+					<i
+						>{{
+							node.lastActive
+								? getDateTimeString(node.lastActive)
+								: 'Never'
+						}}
+					</i>
 				</div>
 			</center>
 		</template>
 		<span style="white-space: pre-wrap">{{
-			jsonToList(node.statistics)
+			node.statistics ? jsonToList(node.statistics) : '-----'
 		}}</span>
 	</v-tooltip>
 </template>
 
 <script>
 import { jsonToList } from '@/lib/utils'
-import BlinkIcon from '@/components/custom/BlinkIcon.vue'
+import { mapActions } from 'pinia'
+import useBaseStore from '../../stores/base.js'
 
 export default {
 	props: {
@@ -39,7 +42,7 @@ export default {
 		},
 	},
 	components: {
-		BlinkIcon,
+		BlinkIcon: () => import('@/components/custom/BlinkIcon.vue'),
 	},
 	data() {
 		return {
@@ -48,9 +51,10 @@ export default {
 		}
 	},
 	methods: {
+		...mapActions(useBaseStore, ['getDateTimeString']),
 		jsonToList(item) {
 			return jsonToList(item, {
-				ignore: ['lwr', 'nlwr', 'rssi'],
+				ignore: ['lwr', 'nlwr', 'rssi', 'backgroundRSSI', 'lastSeen'],
 				suffixes: { rtt: 'ms' },
 			})
 		},

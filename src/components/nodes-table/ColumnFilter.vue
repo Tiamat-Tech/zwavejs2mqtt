@@ -7,6 +7,7 @@
 				v-bind="attrs"
 				v-on="on"
 				title="Filter options..."
+				style="padding-right: 2px; padding-bottom: 3px"
 			>
 				{{ hasFilter ? 'filter_list_alt' : 'filter_list' }}
 			</v-icon>
@@ -54,17 +55,13 @@
 
 <script>
 import ColumnFilterHelper from '@/modules/ColumnFilterHelper'
-import ColumnFilterBoolean from './ColumnFilterBoolean'
-import ColumnFilterDate from './ColumnFilterDate'
-import ColumnFilterNumber from './ColumnFilterNumber'
-import ColumnFilterString from './ColumnFilterString'
 
 export default {
 	components: {
-		ColumnFilterBoolean,
-		ColumnFilterDate,
-		ColumnFilterNumber,
-		ColumnFilterString,
+		ColumnFilterBoolean: () => import('./ColumnFilterBoolean.vue'),
+		ColumnFilterDate: () => import('./ColumnFilterDate.vue'),
+		ColumnFilterNumber: () => import('./ColumnFilterNumber.vue'),
+		ColumnFilterString: () => import('./ColumnFilterString.vue'),
 	},
 	props: {
 		value: {
@@ -107,7 +104,7 @@ export default {
 				Object.keys(obj).some(
 					(k) =>
 						(!!obj[k] && !!Object.keys(obj[k]).length) ||
-						typeof obj[k] === 'boolean'
+						typeof obj[k] === 'boolean',
 				)
 			)
 		},
@@ -123,7 +120,7 @@ export default {
 				// Emit minimal storable filter spec (with empty default values removed):
 				this.$emit(
 					'change',
-					ColumnFilterHelper.filterSpec(this.column.type, value)
+					ColumnFilterHelper.filterSpec(this.column.type, value),
 				)
 			}
 		},

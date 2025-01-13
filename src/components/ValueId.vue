@@ -1,36 +1,38 @@
 <template>
-	<div>
+	<div class="valueid-slot">
 		<v-subheader class="valueid-label">{{ label }} </v-subheader>
 
+		<v-btn
+			@click="resetConfig"
+			v-if="canResetConfiguration"
+			x-small
+			color="error"
+			>Reset</v-btn
+		>
+
+		<!-- Not writeable value -->
 		<div v-if="!value.writeable">
 			<div class="readonly mt-5">
 				{{ parsedValue + (value.unit ? ' ' + value.unit : '') }}
+
+				<v-btn
+					@click="idleNotification"
+					v-if="canIdleNotification"
+					small
+					color="primary"
+					>Idle</v-btn
+				>
 			</div>
 
-			<div v-if="help" class="caption mt-1">
+			<div v-if="help" class="caption mt-1 help">
 				{{ help }}
 			</div>
 		</div>
 
 		<div class="d-flex align-center" v-else>
-			<v-tooltip v-if="value.toUpdate" bottom>
-				<template v-slot:activator="{ on }">
-					<v-progress-circular
-						v-on="on"
-						indeterminate
-						class="mr-2"
-						size="20"
-						:color="
-							node?.status === 'Asleep' ? 'warning' : 'primary'
-						"
-					></v-progress-circular>
-				</template>
-				<span>{{
-					node?.status === 'Asleep'
-						? 'Wake up your device in order to send commands'
-						: 'Set value in progress...'
-				}}</span>
-			</v-tooltip>
+			<!-- ### VALUEID INPUTS ### -->
+
+			<!-- Text Input -->
 			<v-text-field
 				v-if="
 					!value.list &&
@@ -44,13 +46,14 @@
 				@click:append-outer="updateValue(value)"
 			></v-text-field>
 
+			<!-- Number Input -->
 			<v-text-field
-				v-if="!value.list && value.type === 'number'"
+				v-else-if="!value.list && value.type === 'number'"
 				type="number"
 				:append-outer-icon="!disable_send ? 'send' : null"
 				:suffix="value.unit"
 				:min="value.min != value.max ? value.min : null"
-				:step="1"
+				:step="value.step || 1"
 				persistent-hint
 				:max="value.min != value.max ? value.max : null"
 				:hint="help"
@@ -58,8 +61,9 @@
 				@click:append-outer="updateValue(value)"
 			></v-text-field>
 
+			<!-- Object Input -->
 			<v-text-field
-				v-if="!value.list && value.type === 'any'"
+				v-else-if="!value.list && value.type === 'any'"
 				:append-outer-icon="!disable_send ? 'send' : null"
 				:suffix="value.unit"
 				persistent-hint
@@ -70,11 +74,12 @@
 				@click:append-outer="updateValue(value)"
 			></v-text-field>
 
-			<div style="display: flex" v-if="value.type === 'duration'">
+			<!-- Duration Input -->
+			<div style="display: flex" v-else-if="value.type === 'duration'">
 				<v-text-field
 					:type="value.type === 'number' ? 'number' : 'text'"
 					:min="value.min != value.max ? value.min : null"
-					:step="1"
+					:step="value.step || 1"
 					persistent-hint
 					:readonly="disable_send"
 					:max="value.min != value.max ? value.max : null"
@@ -92,11 +97,12 @@
 				></v-select>
 			</div>
 
+			<!-- Color Input -->
 			<v-text-field
 				style="max-width: 250px; margin-top: 10px"
 				flat
 				solo
-				v-if="value.type === 'color'"
+				v-else-if="value.type === 'color'"
 				v-model="color"
 				persistent-hint
 				:append-outer-icon="!disable_send ? 'send' : null"
@@ -127,15 +133,20 @@
 				</template>
 			</v-text-field>
 
+			<!-- Select Input -->
 			<v-select
-				v-if="value.list && !value.allowManualEntry"
+				v-else-if="
+					value.list &&
+					!value.allowManualEntry &&
+					value.type !== 'boolean'
+				"
 				:items="items"
 				:style="{
 					'max-width': $vuetify.breakpoint.smAndDown
 						? '280px'
 						: $vuetify.breakpoint.smOnly
-						? '400px'
-						: 'auto',
+							? '400px'
+							: 'auto',
 				}"
 				:hint="help"
 				persistent-hint
@@ -154,15 +165,20 @@
 				</template>
 			</v-select>
 
+			<!-- Select Input with Manual Entry -->
 			<v-combobox
-				v-if="value.list && value.allowManualEntry"
+				v-else-if="
+					value.list &&
+					value.allowManualEntry &&
+					value.type !== 'boolean'
+				"
 				:items="items"
 				:style="{
 					'max-width': $vuetify.breakpoint.smAndDown
 						? '280px'
 						: $vuetify.breakpoint.smOnly
-						? '400px'
-						: 'auto',
+							? '400px'
+							: 'auto',
 				}"
 				:hint="help"
 				persistent-hint
@@ -186,25 +202,44 @@
 				</template>
 			</v-combobox>
 
+			<!-- On/Off Input -->
 			<div
-				v-if="
-					value.type == 'boolean' && value.writeable && value.readable
+				v-else-if="
+					value.type === 'boolean' &&
+					((value.writeable && value.readable) ||
+						(value.states && value.states.length === 2))
 				"
 			>
-				<v-btn-toggle class="mt-4" v-model="value.newValue" rounded>
+				<v-btn-toggle class="my-2" v-model="value.newValue" rounded>
 					<v-btn
 						outlined
 						height="40px"
 						:value="true"
 						:style="{
 							background:
-								value.newValue === true ? '#4CAF50' : '',
+								value.newValue === true && !value.list
+									? '#4CAF50'
+									: '',
 						}"
-						:color="value.newValue === true ? 'white' : 'green'"
+						:color="
+							value.newValue === true && !value.list
+								? 'white'
+								: 'green'
+						"
 						dark
 						@click="updateValue(value, true)"
 					>
-						ON
+						<v-icon
+							v-if="!trueLabel"
+							:color="
+								value.newValue === true && !value.list
+									? 'white'
+									: 'green'
+							"
+							style="rotate: 90deg"
+							>horizontal_rule</v-icon
+						>
+						<span v-else>{{ trueLabel }}</span>
 					</v-btn>
 					<v-btn
 						outlined
@@ -212,36 +247,77 @@
 						:value="false"
 						:style="{
 							background:
-								value.newValue === false ? '#f44336' : '',
+								value.newValue === false && !value.list
+									? '#f44336'
+									: '',
 						}"
-						:color="value.newValue === false ? 'white' : 'red'"
+						:color="
+							value.newValue === false && !value.list
+								? 'white'
+								: 'red'
+						"
 						@click="updateValue(value, false)"
 						dark
 					>
-						OFF
+						<v-icon
+							v-if="!falseLabel"
+							:color="
+								value.newValue === false && !value.list
+									? 'white'
+									: 'red'
+							"
+							>radio_button_unchecked</v-icon
+						>
+						<span v-else>{{ falseLabel }}</span>
 					</v-btn>
 				</v-btn-toggle>
-				<div v-if="help" class="caption mt-2">{{ help }}</div>
+				<div v-if="help" class="caption mt-2 help">{{ help }}</div>
 			</div>
 
-			<v-tooltip v-if="value.type == 'boolean' && !value.readable" right>
+			<!-- Button Input -->
+			<v-tooltip
+				v-else-if="value.type === 'boolean' && !value.readable"
+				right
+			>
 				<template v-slot:activator="{ on }">
 					<v-btn
+						max-width="100%"
+						small
 						v-on="on"
 						color="primary"
 						dark
 						@click="updateValue(value)"
 						class="mb-2 mt-2"
-						>{{ value.label }}</v-btn
+						>{{ trueLabel || falseLabel || value.label }}</v-btn
 					>
 				</template>
-				<span>{{ '[' + value.id + '] ' + help }}</span>
+				<span class="help">{{ '[' + value.id + '] ' + help }}</span>
+			</v-tooltip>
+
+			<!-- Suffix loader with tooltip -->
+			<v-tooltip v-if="value.toUpdate" bottom>
+				<template v-slot:activator="{ on }">
+					<v-progress-circular
+						v-on="on"
+						indeterminate
+						class="ml-2"
+						size="20"
+						:color="
+							node?.status === 'Asleep' ? 'warning' : 'primary'
+						"
+					></v-progress-circular>
+				</template>
+				<span>{{
+					node?.status === 'Asleep'
+						? 'Wake up your device in order to send commands'
+						: 'Set value in progress...'
+				}}</span>
 			</v-tooltip>
 		</div>
 	</div>
 </template>
 
-<style>
+<style scoped>
 .valueid-label {
 	font-weight: bold !important;
 	padding-left: 0 !important;
@@ -252,9 +328,17 @@
 	font-size: x-large !important;
 	font-weight: bold !important;
 }
+
+.valueid-slot::v-deep .v-messages__message,
+.valueid-slot::v-deep .help {
+	white-space: pre-line;
+}
 </style>
 
 <script>
+import { manager, instances } from '../lib/instanceManager'
+import useBaseStore from '../stores/base.js'
+
 export default {
 	props: {
 		value: {
@@ -275,6 +359,18 @@ export default {
 		}
 	},
 	computed: {
+		trueLabel() {
+			return this.value.type === 'boolean' &&
+				this.value.states?.length > 0
+				? this.value.states.find((s) => s.value === true)?.text
+				: null
+		},
+		falseLabel() {
+			return this.value.type === 'boolean' &&
+				this.value.states?.length > 0
+				? this.value.states.find((s) => s.value === false)?.text
+				: null
+		},
 		selectedItem() {
 			const value =
 				this.value.type === 'number'
@@ -282,6 +378,24 @@ export default {
 					: this.value.newValue
 			if (!this.value.states) return null
 			else return this.value.states.find((s) => s.value === value)
+		},
+		canIdleNotification() {
+			if (!this.value || this.disable_send) return false
+
+			// feat #3051
+			return (
+				this.value.commandClassName === 'Notification' &&
+				this.value.states?.find((s) => s.value === 0)
+			)
+		},
+		canResetConfiguration() {
+			if (!this.value || this.disable_send) return false
+
+			return (
+				this.value.writeable &&
+				this.value.commandClass === 112 &&
+				this.value.commandClassVersion > 3
+			)
 		},
 		items() {
 			if (this.selectedItem) {
@@ -321,8 +435,12 @@ export default {
 					this.value.newValue !== undefined
 				) {
 					return this.itemText(
-						this.selectedItem || this.value.newValue
+						this.selectedItem || this.value.newValue,
 					)
+				} else if (this.value === null) {
+					return '(unknown)'
+				} else if (this.value === undefined) {
+					return '(missing)'
 				}
 				return this.value.newValue
 			},
@@ -359,6 +477,41 @@ export default {
 		},
 	},
 	methods: {
+		async resetConfig() {
+			const app = manager.getInstance(instances.APP)
+
+			const response = await app.apiRequest('sendCommand', [
+				{
+					nodeId: this.node.id,
+					commandClass: 112,
+				},
+				'reset',
+				[this.value.property],
+			])
+
+			if (response.success) {
+				useBaseStore().showSnackbar('Configuration reset', 'success')
+			}
+		},
+		async idleNotification() {
+			const app = manager.getInstance(instances.APP)
+
+			const response = await app.apiRequest(
+				'manuallyIdleNotificationValue',
+				[this.value],
+				{
+					infoSnack: false,
+					errorSnack: true,
+				},
+			)
+
+			if (response.success) {
+				useBaseStore().showSnackbar(
+					'Notification manually idled',
+					'success',
+				)
+			}
+		},
 		itemText(item) {
 			if (typeof item === 'object') {
 				return `[${item.value}] ${item.text}${
@@ -380,6 +533,11 @@ export default {
 			}
 
 			if (customValue !== undefined) {
+				v.newValue = customValue
+			}
+
+			if (v.type === 'boolean' && v.states?.length === 1) {
+				customValue = v.states[0].value
 				v.newValue = customValue
 			}
 

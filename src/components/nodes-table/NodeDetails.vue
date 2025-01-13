@@ -40,8 +40,8 @@
 					<v-text-field
 						label="Normal Power Level"
 						v-model.number="node.powerlevel"
-						:min="-12.8"
-						:max="12.7"
+						:min="-10"
+						:max="20"
 						:step="0.1"
 						suffix="dBm"
 						type="number"
@@ -52,8 +52,8 @@
 						label="Measured output power at 0 dBm"
 						append-outer-icon="send"
 						v-model.number="node.measured0dBm"
-						:min="-12.8"
-						:max="12.7"
+						:min="-10"
+						:max="10"
 						:step="0.1"
 						suffix="dBm"
 						type="number"
@@ -63,12 +63,7 @@
 								color="primary"
 								small
 								icon
-								@click="
-									apiRequest('updateControllerNodeProps', [
-										null,
-										['powerlevel'],
-									])
-								"
+								@click="updateControllerNodeProp('powerlevel')"
 							>
 								<v-icon>refresh</v-icon>
 							</v-btn>
@@ -90,7 +85,7 @@
 				>
 					<v-select
 						label="RF Region"
-						:items="rfRegions"
+						:items="node.rfRegions"
 						v-model="node.RFRegion"
 					>
 						<template v-slot:append-outer>
@@ -98,12 +93,7 @@
 								color="primary"
 								small
 								icon
-								@click="
-									apiRequest('updateControllerNodeProps', [
-										null,
-										['RFRegion'],
-									])
-								"
+								@click="updateControllerNodeProp('RFRegion')"
 							>
 								<v-icon>refresh</v-icon>
 							</v-btn>
@@ -122,14 +112,13 @@
 			<v-col style="max-width: 700px" dense>
 				<v-alert text type="warning">
 					<strong
-						>DO NOT CHANGE THIS VALUES UNLESS YOU KNOW WHAT YOU ARE
-						DOING</strong
-					>
+						>DO NOT CHANGE THESE VALUES UNLESS YOU KNOW WHAT YOU ARE
+						DOING
+					</strong>
 					<small
 						>Increasing the TX power (normal power level) may be
-						<b>illegal</b>, depending on where you are
-						located</small
-					>
+						<b>illegal</b>, depending on where you are located.
+					</small>
 
 					<small
 						>Increasing the TX power will only make the nodes "hear"
@@ -145,7 +134,7 @@
 				>
 					<small
 						>{{
-							`Please consult the manufacturer for the default values, as these can vary between different sticks. The defaults for most 700 series sticks are:\n- TX Power: 0.0 dBm\n- Measured output power at 0 dBm: +3.3 dBm`
+							`Please consult the manufacturer for the default values, as these can vary between different sticks.`
 						}}
 					</small>
 				</v-alert>
@@ -167,6 +156,13 @@
 						hint="Ex: '10s' (10 seconds)"
 						persistent-hint
 						v-model.trim="options.transitionDuration"
+						append-icon="clear"
+						@click:append="
+							options.transitionDuration =
+								node.defaultTransitionDuration || ''
+						"
+						append-outer-icon="save"
+						@click:append-outer="setDefaults('transitionDuration')"
 					></v-text-field>
 				</v-col>
 				<v-col
@@ -179,6 +175,12 @@
 						hint="The volume (for the Sound Switch CC)"
 						persistent-hint
 						v-model.trim="options.volume"
+						append-icon="clear"
+						@click:append="
+							options.volume = node.defaultVolume || ''
+						"
+						append-outer-icon="save"
+						@click:append-outer="setDefaults('volume')"
 					></v-text-field>
 				</v-col>
 			</v-row>
@@ -203,14 +205,25 @@
 								<v-col align-self="center">
 									{{ className }}
 								</v-col>
-								<v-col class="text-right pr-5">
+								<v-col class="text-right">
+									<v-btn
+										v-if="canResetConfig(group[0])"
+										@click.stop="resetAllConfig()"
+										color="error"
+										class="mb-1 mr-3"
+										outlined
+										x-small
+									>
+										Reset
+										<v-icon x-small right>clear</v-icon>
+									</v-btn>
 									<v-btn
 										v-if="group[0]"
+										class="mb-1"
 										@click.stop="
-											apiRequest('refreshCCValues', [
-												node.id,
+											refreshCCValues(
 												group[0].commandClass,
-											])
+											)
 										"
 										color="primary"
 										outlined
@@ -248,10 +261,12 @@
 									<v-subheader class="valueid-label"
 										>Custom Configuration
 									</v-subheader>
+
 									<v-row>
 										<v-col cols="3">
 											<v-text-field
 												label="Parameter"
+												hide-details
 												v-model.number="
 													configCC.parameter
 												"
@@ -260,6 +275,7 @@
 										<v-col cols="3">
 											<v-select
 												label="Size"
+												hide-details
 												:items="[1, 2, 3, 4]"
 												v-model.number="
 													configCC.valueSize
@@ -269,6 +285,7 @@
 										<v-col cols="3">
 											<v-text-field
 												label="Value"
+												hide-details
 												v-model.number="configCC.value"
 											/>
 										</v-col>
@@ -281,55 +298,37 @@
 										>
 											<v-select
 												label="Format"
+												hide-details
 												:items="configCCValueFormats"
 												v-model="configCC.valueFormat"
 											/>
 										</v-col>
-										<v-col cols="3">
+										<v-col class="d-flex" style="gap: 10px">
 											<v-btn
 												width="60px"
-												@click.stop="
-													apiRequest('sendCommand', [
-														{
-															nodeId: node.id,
-															commandClass: 112,
-														},
-														'get',
-														[configCC.parameter],
-													])
-												"
+												@click.stop="configurationGet()"
 												color="green"
 												x-small
+												dark
 											>
 												GET
 											</v-btn>
 											<v-btn
 												width="60px"
-												@click.stop="
-													apiRequest('sendCommand', [
-														{
-															nodeId: node.id,
-															commandClass: 112,
-														},
-														'set',
-														[
-															{
-																parameter:
-																	configCC.parameter,
-																value: configCC.value,
-																valueSize:
-																	configCC.valueSize,
-																valueFormat:
-																	configCC.valueFormat,
-															},
-														],
-													])
-												"
+												@click.stop="configurationSet()"
 												color="primary"
 												x-small
 											>
 												SET
 											</v-btn>
+											<v-btn
+												v-if="canResetConfig(group[0])"
+												width="60px"
+												@click.stop="resetConfig"
+												x-small
+												color="error"
+												>Reset</v-btn
+											>
 										</v-col>
 									</v-row>
 								</v-col>
@@ -344,24 +343,22 @@
 </template>
 
 <script>
-import ValueID from '@/components/ValueId'
-
-import { inboundEvents as socketActions } from '@/../server/lib/SocketEvents'
 import { mapState, mapActions } from 'pinia'
-import { validTopic } from '@/lib/utils'
+import { validTopic } from '../../lib/utils'
 import { ConfigValueFormat } from '@zwave-js/core/safe'
-import { RFRegion } from 'zwave-js/safe'
 import useBaseStore from '../../stores/base.js'
+import InstancesMixin from '../../mixins/InstancesMixin.js'
+import { isUnsupervisedOrSucceeded } from '@zwave-js/core/safe'
 
 export default {
 	props: {
 		headers: Array,
 		node: Object,
-		socket: Object,
 	},
 	components: {
-		ValueID,
+		ValueID: () => import('../ValueId.vue'),
 	},
+	mixins: [InstancesMixin],
 	data() {
 		return {
 			locError: null,
@@ -385,16 +382,10 @@ export default {
 				parameter: 1,
 				valueFormat: ConfigValueFormat.UnsignedInteger,
 			},
-			rfRegions: Object.keys(RFRegion)
-				.filter((k) => isNaN(k))
-				.map((key) => ({
-					text: key,
-					value: RFRegion[key],
-				})),
 		}
 	},
 	computed: {
-		...mapState(useBaseStore, ['mqtt', 'setValue']),
+		...mapState(useBaseStore, ['mqtt']),
 		commandGroups() {
 			if (this.node) {
 				const groups = {}
@@ -435,17 +426,154 @@ export default {
 			this.nameError = this.validateTopic(val)
 		},
 	},
+	mounted() {
+		this.options = {
+			transitionDuration: this.node.defaultTransitionDuration,
+			volume: this.node.defaultVolume,
+		}
+	},
 	methods: {
 		...mapActions(useBaseStore, ['showSnackbar']),
-		apiRequest(apiName, args) {
-			if (this.socket.connected) {
-				const data = {
-					api: apiName,
-					args: args,
+		async setDefaults(prop) {
+			let defaultProp = ''
+
+			switch (prop) {
+				case 'transitionDuration':
+					defaultProp = 'defaultTransitionDuration'
+					break
+				case 'volume':
+					defaultProp = 'defaultVolume'
+					break
+			}
+
+			if (!defaultProp) {
+				return
+			}
+
+			const response = await this.app.apiRequest(
+				'setNodeDefaultSetValueOptions',
+				[this.node.id, { [defaultProp]: this.options[prop] }],
+			)
+
+			if (response.success) {
+				this.showSnackbar(
+					`Default node ${prop} updated successffully`,
+					'success',
+				)
+			}
+		},
+		async updateControllerNodeProp(prop) {
+			const response = await this.app.apiRequest(
+				'updateControllerNodeProps',
+				[null, [prop]],
+			)
+
+			if (response.success) {
+				this.showSnackbar('Powerlevel updated', 'success')
+			}
+		},
+		canResetConfig(value) {
+			return (
+				value &&
+				value.commandClass === 112 &&
+				value.commandClassVersion > 3
+			)
+		},
+		async resetAllConfig() {
+			if (
+				await this.app.confirm(
+					'Attention',
+					'Are you sure you want to reset all configurations to default?',
+					'alert',
+				)
+			) {
+				const response = await this.app.apiRequest('sendCommand', [
+					{
+						nodeId: this.node.id,
+						commandClass: 112,
+					},
+					'resetAll',
+					[],
+				])
+
+				if (response.success) {
+					this.showSnackbar('All config values resetted', 'success')
 				}
-				this.socket.emit(socketActions.zwave, data)
-			} else {
-				this.showSnackbar('Socket disconnected', 'error')
+			}
+		},
+		async resetConfig() {
+			const response = await this.app.apiRequest('sendCommand', [
+				{
+					nodeId: this.node.id,
+					commandClass: 112,
+				},
+				'reset',
+				[this.configCC.parameter],
+			])
+
+			if (response.success) {
+				this.showSnackbar(
+					`Parameter ${this.configCC.parameter}: resetted`,
+					'success',
+				)
+			}
+		},
+		async refreshCCValues(cc) {
+			const response = await this.app.apiRequest('refreshCCValues', [
+				this.node.id,
+				cc,
+			])
+
+			if (response.success) {
+				this.showSnackbar(`Values of CC ${cc} refreshed`, 'success')
+			}
+		},
+		async configurationGet() {
+			const response = await this.app.apiRequest('sendCommand', [
+				{
+					nodeId: this.node.id,
+					commandClass: 112,
+				},
+				'get',
+				[this.configCC.parameter],
+			])
+
+			if (response.success) {
+				this.showSnackbar(
+					`Parameter ${this.configCC.parameter}: ${response.result}`,
+					'success',
+				)
+			}
+		},
+		async configurationSet() {
+			const response = await this.app.apiRequest('sendCommand', [
+				{
+					nodeId: this.node.id,
+					commandClass: 112,
+				},
+				'set',
+				[
+					{
+						parameter: this.configCC.parameter,
+						value: this.configCC.value,
+						valueSize: this.configCC.valueSize,
+						valueFormat: this.configCC.valueFormat,
+					},
+				],
+			])
+
+			if (response.success) {
+				if (isUnsupervisedOrSucceeded(response.result)) {
+					this.showSnackbar(
+						`Parameter ${this.configCC.parameter} set successfully`,
+						'success',
+					)
+				} else {
+					this.showSnackbar(
+						`Parameter ${this.configCC.parameter} set failed`,
+						'error',
+					)
+				}
 			}
 		},
 		getValue(v) {
@@ -465,61 +593,55 @@ export default {
 				this.newName = this.node.name
 			}, 10)
 		},
-		updatePowerLevel() {
+		async updatePowerLevel() {
 			if (this.node) {
 				const args = [this.node.powerlevel, this.node.measured0dBm]
-				this.apiRequest('setPowerlevel', args)
+				const response = await this.app.apiRequest(
+					'setPowerlevel',
+					args,
+				)
+
+				if (response.success) {
+					this.showSnackbar('Powerlevel updated', 'success')
+				}
 			}
 		},
-		updateRFRegion() {
+		async updateRFRegion() {
 			if (this.node) {
 				const args = [this.node.RFRegion]
-				this.apiRequest('setRFRegion', args)
+				const response = await this.app.apiRequest('setRFRegion', args)
+
+				if (response.success) {
+					this.showSnackbar('RF Region updated', 'success')
+				}
 			}
 		},
-		updateLoc() {
+		async updateLoc() {
 			if (this.node && !this.locError) {
-				this.apiRequest('setNodeLocation', [this.node.id, this.newLoc])
+				const response = await this.app.apiRequest('setNodeLocation', [
+					this.node.id,
+					this.newLoc,
+				])
+
+				if (response.success) {
+					this.showSnackbar('Node location updated', 'success')
+				}
 			}
 		},
-		updateName() {
+		async updateName() {
 			if (this.node && !this.nameError) {
-				this.apiRequest('setNodeName', [this.node.id, this.newName])
+				const response = await this.app.apiRequest('setNodeName', [
+					this.node.id,
+					this.newName,
+				])
+
+				if (response.success) {
+					this.showSnackbar('Node name updated', 'success')
+				}
 			}
 		},
 		updateValue(v, customValue) {
-			if (v) {
-				// in this way I can check when the value receives an update
-				v.toUpdate = true
-
-				if (v.type === 'number') {
-					v.newValue = Number(v.newValue)
-				}
-
-				// it's a button
-				if (v.type === 'boolean' && !v.readable) {
-					v.newValue = true
-				}
-
-				if (customValue !== undefined) {
-					v.newValue = customValue
-				}
-
-				// update the value in store
-				this.setValue(v)
-
-				this.apiRequest('writeValue', [
-					{
-						nodeId: v.nodeId,
-						commandClass: v.commandClass,
-						endpoint: v.endpoint,
-						property: v.property,
-						propertyKey: v.propertyKey,
-					},
-					v.newValue,
-					this.options,
-				])
-			}
+			this.$emit('updateValue', v, customValue)
 		},
 		validateTopic(name) {
 			const error = this.mqtt.disabled ? '' : validTopic(name)

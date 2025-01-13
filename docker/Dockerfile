@@ -1,47 +1,54 @@
 ARG image=zwave-js-ui
 
-# STEP: 1 build
-FROM node:18.10.0-alpine3.16 AS build-zui
+FROM alpine:3.18.4 as base
+
+RUN apk add --no-cache \
+    openssl \
+    libusb \
+    tzdata \
+    eudev \
+    nodejs=18.20.1-r0
+
+# https://pkgs.alpinelinux.org/packages?name=nodejs&branch=edge&repo=&arch=&maintainer=
 
 WORKDIR /usr/src/app
 
-RUN apk --no-cache add \
-    coreutils \	
-    jq \
-    linux-headers \
-    alpine-sdk \	
-    python3
+# STEP: 1 build
+FROM base AS build-zui
 
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn/releases .yarn/releases
-
-ENV YARN_HTTP_TIMEOUT=300000
-
-RUN yarn install --immutable
-
-# Fix issue with serialport bindings #2349
-RUN npm_config_build_from_source=true yarn rebuild @serialport/bindings-cpp
+RUN \
+    apk add --no-cache --virtual .build-dependencies \
+        jq \
+        build-base \
+        linux-headers \
+        python3-dev \
+        npm=9.6.6-r0
 
 COPY . .
 
-# Build back and frontend only when not existing
-RUN [ -d 'dist' ] && echo "Skipping build" || yarn build
+# if node_modules does not exist, install deps, if dist is missing, install also dev deps
+RUN [ -d 'node_modules' ] && echo "Skipping install" || npm ci $([ -d 'dist' ] && echo '--omit=dev' || echo '')
 
-RUN yarn remove $(cat package.json | jq -r '.devDependencies | keys | join(" ")') && \
-    rm -rf \
-    build \
-    package.sh \
-    src \
-    static \
-    docs \
-    .yarn \
-    .github \
-    .vscode
+# Fix issue with serialport bindings #2349
+RUN npm_config_build_from_source=true npm rebuild @serialport/bindings-cpp
+
+# Build back and frontend only when not existing
+RUN [ -d 'dist' ] && echo "Skipping build" || npm run build
+
+RUN npm prune --omit=dev && \
+    find . -mindepth 1 -maxdepth 1 \
+    ! -name "node_modules" \
+    ! -name "snippets" \
+    ! -name ".git" \
+    ! -name "package.json" \
+    ! -name "server" \
+    ! -name "dist" \
+    -exec rm -rf {} +
 
 # add plugin support, space separated
 ARG plugins
 RUN if [ ! -z "$plugins" ]; \
-    then echo "Installing plugins ${plugins}"; yarn add ${plugins} ; fi
+    then echo "Installing plugins ${plugins}"; npm install ${plugins} ; fi
 
 # when update devices arg is set update config files from zwavejs repo
 ARG updateDevices
@@ -53,26 +60,17 @@ RUN if [ ! -z "$updateDevices"  ]; \
     node-zwave-js-master/packages/config/config/devices/ ;\
     fi
 
+RUN apk del --no-cache --purge .build-dependencies
+
 # STEP: 2 (runtime)
-FROM node:18.10.0-alpine3.16
+FROM base AS runtime
 
-RUN apk add --no-cache \	
-    libstdc++ \
-    openssl \
-    libgcc \	
-    libusb \	
-    tzdata \	
-    eudev	
-
-
-# Copy files from previous build stage	
+# Copy files from previous build stage
 COPY --from=build-zui /usr/src/app /usr/src/app
-
-ENV ZWAVEJS_EXTERNAL_CONFIG=/usr/src/app/store/.config-db
 
 ENV TAG_NAME=${image_name}
 
-WORKDIR /usr/src/app
+ENV NODE_ENV=production
 
 EXPOSE 8091
 

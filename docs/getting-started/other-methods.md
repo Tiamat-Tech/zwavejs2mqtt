@@ -34,9 +34,65 @@ sudo snap connect zwave-js-ui:hardware-observe
 >
 > Raspberry Pi users running Raspbian/Debian, read [this thread](https://github.com/zwave-js/zwave-js-ui/discussions/1216#discussion-3364776). Please ask Raspbian/Debian related-questions in this thread.
 
+## NPM
+
+You can install Z-Wave JS UI from NPM:
+
+```bash
+npm install -g zwave-js-ui
+```
+
+And run it with:
+
+```bash
+zwave-js-ui
+```
+
+> [!WARNING]
+> You **MUST** configure a custom storage path using an environment variable, otherwise settings will be lost on updates.
+
+Run with custom storage path:
+
+```bash
+STORE_DIR=~/.zwave-js-ui \
+zwave-js-ui
+```
+
+If you want to run it as a service, you can use [PM2](https://pm2.keymetrics.io/):
+
+```bash
+npm install -g pm2
+```
+
+Create a file named `ecosystem.config.js` with the following content (change the paths to match your system):
+
+```js
+module.exports = {
+  apps : [
+      {
+        out_file: "/dev/null", // disable logs, use log to file when needed
+        error_file: "/dev/null", // disable logs, use log to file when needed
+        cwd: "~/",
+        script: "zwave-js-ui",
+        env: {
+          STORE_DIR: "~/.zwave-js-ui",
+        },
+      },
+  ]
+}
+```
+
+And run it with:
+
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+```
+
 ## NodeJS or PKG version
 
-The most complex way to run Z-Wave JS UI is on bare metal. To do so, you can use the packaged version (you don't need NodeJS/yarn installed) or clone this repository and build the project:
+The most complex way to run Z-Wave JS UI is on bare metal. To do so, you can use the packaged version (you don't need NodeJS/NPM installed) or clone this repository and build the project:
 
 - For the packaged version:
 
@@ -59,7 +115,7 @@ The most complex way to run Z-Wave JS UI is on bare metal. To do so, you can use
     ```bash
     git clone https://github.com/zwave-js/zwave-js-ui
     cd zwave-js-ui
-    yarn install
-    yarn run build
-    yarn start
+    npm install
+    npm run build
+    npm start
     ```

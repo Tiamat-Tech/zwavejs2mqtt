@@ -1,11 +1,12 @@
 <template>
 	<v-container grid-list-md>
 		<v-row class="ml-5">
-			<v-col cols="12">
+			<v-col v-show="!node.firmwareUpdate" cols="12">
 				<v-row justify="center" class="mb-2 text-center" dense>
 					<v-btn
 						:disabled="loading"
-						text
+						outlined
+						class="my-auto"
 						color="green"
 						@click="checkUpdates"
 						>Check updates</v-btn
@@ -15,18 +16,42 @@
 						hide-details
 						dense
 						label="Include pre-releases"
-						class="ml-1"
+						class="ml-2 my-auto"
 					>
 					</v-checkbox>
+					<v-checkbox
+						v-model="showDowngrades"
+						hide-details
+						dense
+						label="Show downgrades"
+						class="ml-2 my-auto"
+					>
+					</v-checkbox>
+					<v-select
+						v-if="
+							controllerNode &&
+							controllerNode.RFRegion === undefined
+						"
+						style="max-width: 200px"
+						class="ml-2 mb-2"
+						label="Rf Region"
+						hide-details
+						:items="rfRegions"
+						v-model="rfRegion"
+					>
+						<template v-slot:prepend>
+							<v-icon>signal_cellular_alt</v-icon>
+						</template>
+					</v-select>
 				</v-row>
 			</v-col>
 
-			<template v-if="fwUpdates.length > 0">
+			<template v-if="filteredUpdates.length > 0 && !node.firmwareUpdate">
 				<v-col
 					cols="12"
 					sm="6"
 					md="4"
-					v-for="u in fwUpdates"
+					v-for="u in filteredUpdates"
 					:key="u.version"
 				>
 					<v-card dense elevation="5">
@@ -43,7 +68,9 @@
 								small
 								:color="u.downgrade ? 'warning' : 'success'"
 								@click="updateFirmware(u)"
-								><v-icon small>upload</v-icon>
+								><v-icon small>{{
+									u.downgrade ? 'download' : 'upload'
+								}}</v-icon>
 								{{ u.downgrade ? 'Downgrade' : 'Update' }}
 							</v-btn>
 						</v-card-title>
@@ -54,8 +81,7 @@
 							>
 							<p
 								class="text-caption ml-4"
-								v-text="u.changelog"
-								style="white-space: break-spaces"
+								v-html="u.changelog"
 							></p>
 
 							<v-list-item
@@ -93,10 +119,17 @@
 					</v-card>
 				</v-col>
 			</template>
-			<v-col class="text-center" v-else-if="loading">
+			<v-col
+				class="text-center"
+				v-else-if="loading || node.firmwareUpdate"
+			>
 				<v-progress-circular indeterminate color="primary" />
 				<p class="text-caption">
-					Remember to wake up sleeping devices...
+					{{
+						node.firmwareUpdate
+							? 'Update in progress...'
+							: 'Remember to wake up sleeping devices...'
+					}}
 				</p>
 			</v-col>
 			<v-col class="text-center" v-else>
@@ -105,6 +138,7 @@
 					>This service relies on
 					<a
 						href="https://github.com/zwave-js/firmware-updates#readme"
+						target="_blank"
 						>Z-Wave JS Firmware Update Service</a
 					>, and may not represent all updates for your device.</span
 				>
@@ -121,12 +155,10 @@
 </template>
 
 <script>
-import {
-	socketEvents,
-	inboundEvents as socketActions,
-} from '@/../server/lib/SocketEvents'
 import useBaseStore from '../../stores/base.js'
-import { mapActions } from 'pinia'
+import { mapActions, mapState } from 'pinia'
+import InstancesMixin from '../../mixins/InstancesMixin.js'
+import { rfRegions } from '../../lib/items.js'
 
 export default {
 	components: {},
@@ -134,78 +166,99 @@ export default {
 		node: Object,
 		socket: Object,
 	},
+	mixins: [InstancesMixin],
 	data() {
 		return {
+			rfRegions,
+			rfRegion: null,
 			fwUpdates: [],
 			loading: false,
 			includePrereleases: false,
+			showDowngrades: false,
 		}
 	},
-	computed: {},
+	computed: {
+		...mapState(useBaseStore, ['controllerNode']),
+		filteredUpdates() {
+			return this.fwUpdates.filter(
+				(u) => !u.downgrade || (u.downgrade && this.showDowngrades),
+			)
+		},
+	},
 	mounted() {
-		this.socket.on(socketEvents.api, (data) => {
-			if (
-				data.api === 'getAvailableFirmwareUpdates' &&
-				data.originalArgs[0] === this.node.id
-			) {
-				this.loading = false
-				if (data.success) {
-					this.fwUpdates = data.result
-				}
-			}
-		})
-
 		this.checkUpdates()
 	},
 	methods: {
 		...mapActions(useBaseStore, ['showSnackbar']),
-		apiRequest(apiName, args) {
-			if (this.socket.connected) {
-				const data = {
-					api: apiName,
-					args: args,
-				}
-				this.socket.emit(socketActions.zwave, data)
-			} else {
-				this.showSnackbar('Socket disconnected', 'error')
-			}
-		},
-		checkUpdates() {
+		async checkUpdates() {
 			this.loading = true
 			this.fwUpdates = []
-			this.apiRequest('getAvailableFirmwareUpdates', [
-				this.node.id,
-				{
-					includePrereleases: this.includePrereleases,
-				},
-			])
+			const options = {
+				includePrereleases: this.includePrereleases,
+			}
+
+			if (
+				this.controllerNode &&
+				this.controllerNode.RFRegion === undefined
+			) {
+				options.rfRegion = this.rfRegion
+			}
+
+			const response = await this.app.apiRequest(
+				'getAvailableFirmwareUpdates',
+				[this.node.id, options],
+			)
+
+			this.loading = false
+
+			if (response.success) {
+				const { default: md } = await import('markdown-it')
+
+				// convert markdown changelog to html
+				for (const update of response.result) {
+					update.changelog = md().render(update.changelog)
+				}
+
+				this.fwUpdates = response.result
+			} else {
+				this.showSnackbar(
+					`Failed to check for firmware updates: ${response.message}`,
+					'error',
+				)
+			}
 		},
 		download(url) {
 			window.open(url, '_blank')
 		},
 		async updateFirmware(update) {
 			if (
-				await this.$listeners.showConfirm(
-					'OTA Update',
-					`<p>Are you sure you want to update node to <b>v${update.version}</b>?</p>
+				await this.app.confirm(
+					`OTA ${update.downgrade ? 'Downgrade' : 'Upgrade'}`,
+					`<p>Are you sure you want to ${
+						update.downgrade ? 'downgrade' : 'upgrade'
+					} node to <b>v${update.version}</b>?</p>
 										
 					<p><strong>We don't take any responsibility if devices upgraded using Z-Wave JS don't work after an update. Always double-check that the correct update is about to be installed</strong></p>
 					
 					<p>This will download the desired firmware update from the <a href="https://github.com/zwave-js/firmware-updates/">Z-Wave JS firmware update service</a> and start an over-the-air (OTA) firmware update for the given node.</p>
 	
 					`,
-					'warning',
+					update.downgrade ? 'error' : 'warning',
 					{
-						confirmText: 'Update',
+						confirmText: `${
+							update.downgrade ? 'Downgrade' : 'Upgrade'
+						}`,
 						cancelText: 'Cancel',
 						width: '500px',
-					}
+					},
 				)
 			) {
-				this.apiRequest('firmwareUpdateOTA', [
-					this.node.id,
-					update.files,
-				])
+				const response = await this.app.apiRequest(
+					'firmwareUpdateOTA',
+					[this.node.id, update],
+				)
+
+				await this.app.handleFwUpdateResponse(response)
 			}
 		},
 	},

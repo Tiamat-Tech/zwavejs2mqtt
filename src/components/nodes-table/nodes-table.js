@@ -1,10 +1,6 @@
 import draggable from 'vuedraggable'
 import colors from 'vuetify/lib/util/colors'
 import { ManagedItems } from '@/modules/ManagedItems'
-import ColumnFilter from '@/components/nodes-table/ColumnFilter.vue'
-import ExpandedNode from '@/components/nodes-table/ExpandedNode.vue'
-import RichValue from '@/components/nodes-table/RichValue.vue'
-import StatisticsArrows from '@/components/custom/StatisticsArrows.vue'
 
 import { mapState } from 'pinia'
 import {
@@ -24,27 +20,41 @@ import {
 	mdiPlusCircle,
 	mdiPowerPlug,
 	mdiSleep,
+	mdiZWave,
 } from '@mdi/js'
 import useBaseStore from '../../stores/base.js'
+import {
+	getBatteryDescription,
+	getProtocolIcon,
+	getProtocol,
+	getProtocolColor,
+} from '../../lib/utils.js'
 
 export default {
 	props: {
-		nodeActions: Array,
 		socket: Object,
 	},
 	components: {
 		draggable,
-		ColumnFilter,
-		ExpandedNode,
-		RichValue,
-		StatisticsArrows,
+		ColumnFilter: () => import('@/components/nodes-table/ColumnFilter.vue'),
+		ExpandedNode: () => import('@/components/nodes-table/ExpandedNode.vue'),
+		RichValue: () => import('@/components/nodes-table/RichValue.vue'),
+		StatisticsArrows: () =>
+			import('@/components/custom/StatisticsArrows.vue'),
+		ReinterviewBadge: () =>
+			import('@/components/custom/ReinterviewBadge.vue'),
 	},
-	watch: {},
+	watch: {
+		'managedNodes.selected': function (val) {
+			this.$emit('selected', val)
+		},
+	},
 	computed: {
 		...mapState(useBaseStore, ['nodes']),
 	},
 	data: function () {
 		return {
+			search: '',
 			managedNodes: null,
 			nodesProps: {
 				/* The node property definition map entries can have the following attributes:
@@ -151,6 +161,26 @@ export default {
 						return v
 					},
 				},
+				protocol: {
+					type: 'string',
+					label: 'Protocol',
+					richValue: (node) => {
+						let v = {
+							align: 'center',
+							icon: node.ready ? mdiMinusCircle : mdiHelpCircle,
+							iconStyle: node.ready
+								? `color: ${colors.red.base}`
+								: 'color: grey',
+							description: node.ready ? 'No' : 'Unknown Protocol',
+						}
+						if (node.protocol === undefined) return v
+
+						v.icon = mdiZWave
+						v.description = getProtocol(node)
+						v.iconStyle = `color: ${getProtocolColor(node)}`
+						return v
+					},
+				},
 				firmwareVersion: {
 					type: 'string',
 					label: 'FW',
@@ -186,7 +216,10 @@ export default {
 						return v
 					},
 				},
-				healProgress: { type: 'string', label: 'Heal' },
+				rebuildRoutesProgress: {
+					type: 'string',
+					label: 'Rebuild routes',
+				},
 				interviewStage: { type: 'string', label: 'Interview' },
 				lastActive: {
 					type: 'date',
@@ -204,8 +237,8 @@ export default {
 				? Math.round(
 						(node.firmwareUpdate.sentFragments /
 							node.firmwareUpdate.totalFragments) *
-							100
-				  )
+							100,
+					)
 				: null
 		},
 		toggleExpanded(item) {
@@ -213,7 +246,7 @@ export default {
 				? this.expanded.filter((i) => i !== item)
 				: [...this.expanded, item]
 		},
-		getHealIcon(status) {
+		getRebuildRoutesIcon(status) {
 			switch (status) {
 				case 'done':
 					return { icon: 'done', color: 'green' }
@@ -225,6 +258,7 @@ export default {
 
 			return undefined
 		},
+		getProtocolIcon,
 		groupValue(group) {
 			return this.managedNodes.groupValue(group)
 		},
@@ -239,8 +273,8 @@ export default {
 				value === undefined
 					? valueMap.default
 					: value
-					? valueMap.true
-					: valueMap.false
+						? valueMap.true
+						: valueMap.false
 			return {
 				align: 'center',
 				icon: map.icon,
@@ -270,10 +304,7 @@ export default {
 				description = 'mains-powered'
 			} else {
 				label = `${level}%`
-				description = Array.isArray(node.batteryLevels)
-					? 'All battery levels: ' +
-					  node.batteryLevels.map((v) => `${v}%`).join(',')
-					: 'Unknown battery level'
+				description = getBatteryDescription(node)
 				if (level <= 10) {
 					icon = mdiBatteryAlertVariantOutline
 					iconStyle = `color: ${colors.red.base}`
@@ -319,7 +350,7 @@ export default {
 			this.nodes,
 			this.nodesProps,
 			localStorage,
-			'nodes_'
+			'nodes_',
 		)
 	},
 }

@@ -50,7 +50,9 @@ body:
         - Docker
         - PKG executable
         - Snap
-        - Manually built (git clone - yarn build - yarn install
+        - NPM
+        - Home Assistant Add-on
+        - Manually built (git clone - npm run build - npm install
     validations:
       required: true
   - type: input

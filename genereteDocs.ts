@@ -1,33 +1,33 @@
 import { MethodDeclaration, Project, SourceFile } from 'ts-morph'
-import { allowedApis } from './lib/ZwaveClient'
+import { allowedApis } from './api/lib/ZwaveClient'
 import { readFile, writeFile } from 'fs/promises'
 
 import * as prettier from 'prettier'
 import { join } from 'path'
 
 // Make the linter happy
-export function formatWithPrettier(
+export async function formatWithPrettier(
 	filename: string,
-	sourceText: string
-): string {
+	sourceText: string,
+): Promise<string> {
 	const prettierOptions = {
 		...require(join(__dirname, '.prettierrc.js')),
 		// To infer the correct parser
 		filepath: filename,
 	}
-	return prettier.format(sourceText, prettierOptions)
+	return await prettier.format(sourceText, prettierOptions)
 }
 
 // Inpired by https://github.com/zwave-js/node-zwave-js/blob/master/packages/maintenance/src/generateTypedDocs.ts#L334
 async function main() {
 	const program = new Project({ tsConfigFilePath: 'tsconfig.json' })
 
-	const fileName = './lib/ZwaveClient.ts'
+	const fileName = './api/lib/ZwaveClient.ts'
 	const docsFile = './docs/guide/mqtt.md'
 
 	const sourceFile = program.getSourceFileOrThrow(fileName)
 
-	const text = formatWithPrettier(docsFile, mqttApis(sourceFile))
+	const text = await formatWithPrettier(docsFile, mqttApis(sourceFile))
 
 	const content = await readFile(docsFile, 'utf8')
 
@@ -44,7 +44,8 @@ function printMethodDeclaration(method: MethodDeclaration): string {
 	method = method.toggleModifier('public', false)
 	method.getDecorators().forEach((d) => d.remove())
 	const start = method.getStart()
-	const end = method.getBody()!.getStart()
+	// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+	const end = method.getBody().getStart()
 	let ret = method
 		.getText()
 		.substring(0, end - start)
@@ -79,7 +80,7 @@ function mqttApis(file: SourceFile) {
 	if (!ZwaveClientClass) throw new Error('ZwaveClient class not found')
 
 	const methods = ZwaveClientClass.getInstanceMethods().filter((c) =>
-		allowedApis.includes(c.getName() as any)
+		allowedApis.includes(c.getName() as any),
 	)
 
 	let text = ''

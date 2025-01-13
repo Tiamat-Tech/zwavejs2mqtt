@@ -1,8 +1,73 @@
 <template>
 	<v-container fluid class="pa-4">
-		<v-data-table :headers="headers" :items="items" class="elevation-1">
+		<v-data-table
+			:headers="headers"
+			:items="items"
+			class="elevation-1"
+			style="margin-bottom: 80px"
+			:search="search"
+			:options.sync="tableOptions"
+		>
 			<template v-slot:top>
-				<h2 class="ma-3">Provisioning Entries</h2>
+				<v-col class="pt-0" dense>
+					<h2 class="pa-3">Provisioning Entries</h2>
+					<missing-keys-alert />
+					<v-menu
+						v-model="showInfoTooltip"
+						:position-x="x"
+						:position-y="y"
+						absolute
+						offset-y
+						offset-x
+					>
+						<v-list dense>
+							<v-list-item dense>
+								<v-list-item-title>
+									When an entry has a Node associated it
+									cannot be edited
+								</v-list-item-title>
+							</v-list-item>
+						</v-list>
+					</v-menu>
+
+					<v-row>
+						<v-col cols="12" sm="6">
+							<v-text-field
+								v-model="search"
+								clearable
+								flat
+								solo-inverted
+								hide-details
+								single-line
+								class="ma-2"
+								style="max-width: 250px; min-width: 250px"
+								prepend-inner-icon="search"
+								label="Search"
+								append-icon="refresh"
+								@click:append="refreshItems"
+							></v-text-field>
+						</v-col>
+					</v-row>
+				</v-col>
+			</template>
+
+			<template v-slot:[`item.nodeId`]="{ item }">
+				<v-btn
+					v-if="item.nodeId"
+					color="primary"
+					small
+					rounded
+					@click.stop="showNodeDialog(item)"
+				>
+					{{ item.nodeId }}
+
+					<v-icon class="ml-2" small>open_in_new</v-icon>
+				</v-btn>
+			</template>
+
+			<template v-slot:[`item.dsk`]="{ item }">
+				<span v-if="streamerMode">*********</span>
+				<span v-else> {{ item.dsk }} </span>
 			</template>
 
 			<template v-slot:[`item.status`]="{ item }">
@@ -13,47 +78,114 @@
 				></v-switch>
 			</template>
 
+			<template v-slot:[`item.protocol`]="{ item }">
+				<v-btn
+					v-if="
+						item.supportedProtocols?.includes(
+							Protocols.ZWaveLongRange,
+						)
+					"
+					@click="toggleProtocol(item)"
+					:disabled="!!item.nodeId"
+					dense
+					rounded
+					@focus="onRowFocus($event, item)"
+					@blur="onRowBlur($event, item)"
+					@mouseenter="onRowFocus($event, item)"
+					@mouseleave="onRowBlur($event, item)"
+					small
+					outlined
+					:color="getProtocolColor(item)"
+					>{{ getProtocol(item) }}</v-btn
+				>
+				<span class="caption" v-else> Z-Wave </span>
+			</template>
+
 			<template
 				v-slot:[`item.securityClasses.s2AccessControl`]="{ item }"
 			>
-				<v-checkbox
-					v-model="item.securityClasses.s2AccessControl"
-					@change="onChange(item)"
-					:disabled="!item.requestedSecurityClasses.s2AccessControl"
-					hide-details
-					dense
-				></v-checkbox>
+				<div
+					@focus="onRowFocus($event, item)"
+					@blur="onRowBlur($event, item)"
+					@mouseenter="onRowFocus($event, item)"
+					@mouseleave="onRowBlur($event, item)"
+				>
+					<v-checkbox
+						v-model="item.securityClasses.s2AccessControl"
+						@change="onChange(item)"
+						:disabled="
+							!!item.nodeId ||
+							!item.requestedSecurityClasses.s2AccessControl
+						"
+						hide-details
+						dense
+					></v-checkbox>
+				</div>
 			</template>
 			<template
 				v-slot:[`item.securityClasses.s2Authenticated`]="{ item }"
 			>
-				<v-checkbox
-					v-model="item.securityClasses.s2Authenticated"
-					@change="onChange(item)"
-					:disabled="!item.requestedSecurityClasses.s2Authenticated"
-					hide-details
-					dense
-				></v-checkbox>
+				<div
+					@focus="onRowFocus($event, item)"
+					@blur="onRowBlur($event, item)"
+					@mouseenter="onRowFocus($event, item)"
+					@mouseleave="onRowBlur($event, item)"
+				>
+					<v-checkbox
+						v-model="item.securityClasses.s2Authenticated"
+						@change="onChange(item)"
+						:disabled="
+							!!item.nodeId ||
+							!item.requestedSecurityClasses.s2Authenticated
+						"
+						hide-details
+						dense
+					></v-checkbox>
+				</div>
 			</template>
 			<template
 				v-slot:[`item.securityClasses.s2Unauthenticated`]="{ item }"
 			>
-				<v-checkbox
-					v-model="item.securityClasses.s2Unauthenticated"
-					:disabled="!item.requestedSecurityClasses.s2Unauthenticated"
-					@change="onChange(item)"
-					hide-details
-					dense
-				></v-checkbox>
+				<div
+					@focus="onRowFocus($event, item)"
+					@blur="onRowBlur($event, item)"
+					@mouseenter="onRowFocus($event, item)"
+					@mouseleave="onRowBlur($event, item)"
+				>
+					<v-checkbox
+						v-if="item.protocol === Protocols.ZWave"
+						v-model="item.securityClasses.s2Unauthenticated"
+						:disabled="
+							!!item.nodeId ||
+							!item.requestedSecurityClasses.s2Unauthenticated
+						"
+						@change="onChange(item)"
+						hide-details
+						dense
+					></v-checkbox>
+					<span v-else></span>
+				</div>
 			</template>
 			<template v-slot:[`item.securityClasses.s0Legacy`]="{ item }">
-				<v-checkbox
-					v-model="item.securityClasses.s0Legacy"
-					:disabled="!item.requestedSecurityClasses.s0Legacy"
-					@change="onChange(item)"
-					hide-details
-					dense
-				></v-checkbox>
+				<div
+					@focus="onRowFocus($event, item)"
+					@blur="onRowBlur($event, item)"
+					@mouseenter="onRowFocus($event, item)"
+					@mouseleave="onRowBlur($event, item)"
+				>
+					<v-checkbox
+						v-if="item.protocol === Protocols.ZWave"
+						v-model="item.securityClasses.s0Legacy"
+						:disabled="
+							!!item.nodeId ||
+							!item.requestedSecurityClasses.s0Legacy
+						"
+						@change="onChange(item)"
+						hide-details
+						dense
+					></v-checkbox>
+					<span v-else></span>
+				</div>
 			</template>
 			<template v-slot:[`item.actions`]="{ item }">
 				<v-icon small color="red" @click="removeItem(item)"
@@ -75,7 +207,7 @@
 			<template v-slot:activator>
 				<v-btn v-model="fab" color="blue darken-3" dark fab>
 					<v-icon v-if="fab"> close </v-icon>
-					<v-icon v-else> add </v-icon>
+					<v-icon v-else> menu </v-icon>
 				</v-btn>
 			</template>
 			<v-tooltip left>
@@ -159,37 +291,92 @@
 				<span>Export</span>
 			</v-tooltip>
 		</v-speed-dial>
+
+		<v-dialog
+			:fullscreen="$vuetify.breakpoint.xs"
+			max-width="1200px"
+			v-model="expandedNodeDialog"
+			persistent
+			@keydown.exit="closeDialog()"
+		>
+			<v-card min-height="90vh">
+				<v-btn
+					style="position: absolute; right: 5px; top: 5px"
+					x-small
+					@click="closeDialog()"
+					icon
+					fab
+				>
+					<v-icon>close</v-icon>
+				</v-btn>
+				<v-card-text class="pt-3">
+					<expanded-node :node="expandedNode" :socket="socket" />
+				</v-card-text>
+			</v-card>
+		</v-dialog>
 	</v-container>
 </template>
 <script>
-import { tryParseDSKFromQRCodeString } from '@zwave-js/core/safe'
-import { socketEvents } from '@/../server/lib/SocketEvents'
-import { mapState, mapActions } from 'pinia'
+import { tryParseDSKFromQRCodeString, Protocols } from '@zwave-js/core/safe'
+import { mapActions } from 'pinia'
 import {
 	parseSecurityClasses,
 	validDsk,
 	securityClassesToArray,
+	getProtocol,
+	getProtocolColor,
 } from '../lib/utils.js'
 import useBaseStore from '../stores/base.js'
+import InstancesMixin from '../mixins/InstancesMixin.js'
+import { protocolsItems } from '../lib/items.js'
+import { socketEvents } from '@server/lib/SocketEvents'
 
 export default {
 	name: 'SmartStart',
 	props: {
 		socket: Object,
 	},
-	watch: {},
+	mixins: [InstancesMixin],
+	components: {
+		ExpandedNode: () => import('@/components/nodes-table/ExpandedNode.vue'),
+		MissingKeysAlert: () =>
+			import('@/components/custom/MissingKeysAlert.vue'),
+	},
+	watch: {
+		tableOptions: {
+			handler() {
+				useBaseStore().savePreferences({
+					smartStartTable: this.tableOptions,
+				})
+			},
+			deep: true,
+		},
+	},
 	computed: {
-		...mapState(useBaseStore, ['nodes']),
+		streamerMode() {
+			return useBaseStore().ui.streamerMode
+		},
 	},
 	data() {
 		return {
 			items: [],
+			showInfoTooltip: false,
+			x: 0,
+			y: 0,
+			Protocols,
 			fab: false,
+			search: '',
+			tableOptions: {
+				sortBy: ['nodeId'],
+			},
+			expandedNode: null,
+			expandedNodeDialog: false,
 			headers: [
 				{ text: 'ID', value: 'nodeId' },
 				{ text: 'Name', value: 'name' },
 				{ text: 'Location', value: 'location' },
 				{ text: 'Active', value: 'status' },
+				{ text: 'Protocol', value: 'protocol' },
 				{ text: 'DSK', value: 'dsk' },
 				{
 					text: 'S2 Access Control',
@@ -212,36 +399,122 @@ export default {
 			edited: false,
 		}
 	},
+	mounted() {
+		this.tableOptions = useBaseStore().getPreference('smartStartTable', {
+			page: 1,
+			itemsPerPage: 10,
+			sortBy: ['nodeId'],
+			sortDesc: [false],
+			groupBy: [],
+			groupDesc: [],
+			mustSort: false,
+			multiSort: false,
+		})
+
+		this.refreshItems()
+
+		this.bindEvent(socketEvents.nodeAdded, () => {
+			this.refreshItems()
+		})
+	},
+	beforeDestroy() {
+		if (this.socket) {
+			this.unbindEvents()
+		}
+	},
 	methods: {
 		...mapActions(useBaseStore, ['showSnackbar']),
-		refreshItems() {
-			this.apiRequest('getProvisioningEntries', [])
+		onRowFocus(event, item) {
+			if (item.nodeId) {
+				// get mouse position
+				this.x = event.clientX + 10
+				this.y = event.clientY + 10
+
+				this.showInfoTooltip = true
+			}
+		},
+		onRowBlur() {
+			this.showInfoTooltip = false
+		},
+		getProtocol,
+		getProtocolColor,
+		showNodeDialog(entity) {
+			const node = this.nodes.find((n) => n.id === entity.nodeId)
+			if (node) {
+				this.expandedNode = node
+				this.expandedNodeDialog = true
+			}
+		},
+		closeDialog() {
+			this.expandedNode = null
+			this.expandedNodeDialog = false
+		},
+		async refreshItems() {
+			const response = await this.app.apiRequest(
+				'getProvisioningEntries',
+				[],
+				{
+					infoSnack: false,
+					errorSnack: true,
+				},
+			)
+
+			if (response.success) {
+				this.items = this.parseItems(response.result)
+			}
 		},
 		async exportList() {
-			await this.$listeners.export(
+			await this.app.exportConfiguration(
 				this.items,
 				'provisioningEntries',
-				'json'
+				'json',
 			)
 		},
 		async importList() {
-			const { data } = await this.$listeners.import('json')
+			const { data } = await this.app.importFile('json')
 
 			if (data) {
 				for (const entry of data) {
-					this.apiRequest('provisionSmartStartNode', [
-						this.convertItem(entry),
-					])
+					this.updateItem(entry)
 				}
 			}
 		},
-		onChange(item) {
-			this.edited = true
+		async onChange(item) {
+			await this.updateItem(item)
+			this.edited = false
+			this.refreshItems()
+		},
+		async toggleProtocol(item) {
+			item.protocol =
+				item.protocol === Protocols.ZWave
+					? Protocols.ZWaveLongRange
+					: Protocols.ZWave
+			await this.onChange(item)
+		},
+		async updateItem(itemOrQr) {
+			const response = await this.app.apiRequest(
+				'provisionSmartStartNode',
+				[
+					typeof itemOrQr === 'string'
+						? itemOrQr
+						: this.convertItem(itemOrQr),
+				],
+			)
 
-			this.apiRequest('provisionSmartStartNode', [this.convertItem(item)])
+			if (response.success) {
+				const entry = response.result
+				this.showSnackbar(
+					`Node ${entry.nodeId || entry.name || ''} ${
+						this.edited ? 'updated' : 'added'
+					}`,
+					'success',
+				)
+
+				this.refreshItems()
+			}
 		},
 		async scanItem() {
-			let qrString = await this.$listeners.showConfirm(
+			let qrString = await this.app.confirm(
 				'New entry',
 				'Scan QR Code or import it as an image',
 				'info',
@@ -249,7 +522,7 @@ export default {
 					qrScan: true,
 					canceltext: 'Close',
 					width: 500,
-				}
+				},
 			)
 
 			if (qrString) {
@@ -257,10 +530,10 @@ export default {
 				if (dsk) {
 					this.showSnackbar(
 						`Provided QR Code is not a SmartStart QR Code.\nIn order to use it go to Control Panel > Manage Nodes and use Scan QR Code Inclusion.`,
-						'warning'
+						'warning',
 					)
 				} else {
-					this.apiRequest('provisionSmartStartNode', [qrString])
+					this.updateItem(qrString)
 				}
 			}
 		},
@@ -268,124 +541,163 @@ export default {
 			if (existingItem) {
 				this.edited = true
 			}
-			let item = await this.$listeners.showConfirm(
+
+			let inputs = [
+				{
+					type: 'text',
+					label: 'Name',
+					required: true,
+					key: 'name',
+					hint: 'The node name',
+					default: existingItem ? existingItem.name : '',
+				},
+				{
+					type: 'text',
+					label: 'Location',
+					required: true,
+					key: 'location',
+					hint: 'The node location',
+					default: existingItem ? existingItem.location : '',
+				},
+			]
+
+			if (!existingItem?.nodeId) {
+				inputs = [
+					...inputs,
+					{
+						type: 'text',
+						label: 'DSK',
+						required: true,
+						key: 'dsk',
+						hint: 'Enter the full DSK code (dashes included) for your device',
+						rules: [validDsk],
+						default: existingItem ? existingItem.dsk : '',
+					},
+					{
+						type: 'list',
+						label: 'Protocol',
+						required: true,
+						key: 'protocol',
+						items: protocolsItems,
+						disabled:
+							existingItem &&
+							(!existingItem.supportedProtocols ||
+								existingItem.supportedProtocols.length < 2),
+						hint: 'Inclusion protocol to use',
+						default: existingItem
+							? existingItem.protocol
+							: Protocols.ZWave,
+					},
+					{
+						type: 'checkbox',
+						label: 'S2 Access Control',
+						key: 's2AccessControl',
+						disabled: existingItem
+							? !existingItem.requestedSecurityClasses
+									.s2AccessControl
+							: false,
+						default: existingItem
+							? existingItem.securityClasses.s2AccessControl
+							: false,
+					},
+					{
+						type: 'checkbox',
+						label: 'S2 Authenticated',
+						key: 's2Authenticated',
+						disabled: existingItem
+							? !existingItem.requestedSecurityClasses
+									.s2Authenticated
+							: false,
+						default: existingItem
+							? existingItem.securityClasses.s2Authenticated
+							: false,
+					},
+					{
+						type: 'checkbox',
+						label: 'S2 Unauthenticated',
+						key: 's2Unauthenticated',
+						disabled: existingItem
+							? !existingItem.requestedSecurityClasses
+									.s2Unauthenticated
+							: false,
+						default: existingItem
+							? existingItem.securityClasses.s2Unauthenticated
+							: false,
+						show: (item) => {
+							return item.protocol === Protocols.ZWave
+						},
+					},
+					{
+						type: 'checkbox',
+						label: 'S0 Legacy',
+						key: 's0Legacy',
+						disabled: existingItem
+							? !existingItem.requestedSecurityClasses.s0Legacy
+							: false,
+						default: existingItem
+							? existingItem.securityClasses.s0Legacy
+							: false,
+						show: (item) => {
+							return item.protocol === Protocols.ZWave
+						},
+					},
+				]
+			}
+
+			let item = await this.app.confirm(
 				(existingItem ? 'Update' : 'New') + ' entry',
 				'',
 				'info',
 				{
 					confirmText: existingItem ? 'Update' : 'Add',
 					width: 500,
-					inputs: [
-						{
-							type: 'text',
-							label: 'DSK',
-							required: true,
-							key: 'dsk',
-							hint: 'Enter the full DSK code (dashes included) for your device',
-							rules: [validDsk],
-							default: existingItem ? existingItem.dsk : '',
-						},
-						{
-							type: 'text',
-							label: 'Name',
-							required: true,
-							key: 'name',
-							hint: 'The node name',
-							default: existingItem ? existingItem.name : '',
-						},
-						{
-							type: 'text',
-							label: 'Location',
-							required: true,
-							key: 'location',
-							hint: 'The node location',
-							default: existingItem ? existingItem.location : '',
-						},
-						{
-							type: 'checkbox',
-							label: 'S2 Access Control',
-							key: 's2AccessControl',
-							disabled: existingItem
-								? !existingItem.requestedSecurityClasses
-										.s2AccessControl
-								: false,
-							default: existingItem
-								? existingItem.securityClasses.s2AccessControl
-								: false,
-						},
-						{
-							type: 'checkbox',
-							label: 'S2 Authenticated',
-							key: 's2Authenticated',
-							disabled: existingItem
-								? !existingItem.requestedSecurityClasses
-										.s2Authenticated
-								: false,
-							default: existingItem
-								? existingItem.securityClasses.s2Authenticated
-								: false,
-						},
-						{
-							type: 'checkbox',
-							label: 'S2 Unauthenticated',
-							key: 's2Unauthenticated',
-							disabled: existingItem
-								? !existingItem.requestedSecurityClasses
-										.s2Unauthenticated
-								: false,
-							default: existingItem
-								? existingItem.securityClasses.s2Unauthenticated
-								: false,
-						},
-						{
-							type: 'checkbox',
-							label: 'S0 Legacy',
-							key: 's0Legacy',
-							disabled: existingItem
-								? !existingItem.requestedSecurityClasses
-										.s0Legacy
-								: false,
-							default: existingItem
-								? existingItem.securityClasses.s0Legacy
-								: false,
-						},
-					],
-				}
+					inputs,
+				},
 			)
 
-			if (item.dsk) {
-				const securityClasses = {
-					s2Unauthenticated: item.s2Unauthenticated,
-					s2Authenticated: item.s2Authenticated,
-					s2AccessControl: item.s2AccessControl,
-					s0Legacy: item.s0Legacy,
-				}
-				delete item.s2AccessControl
-				delete item.s2Authenticated
-				delete item.s2Unauthenticated
-				delete item.s0Legacy
+			if (item.dsk || existingItem?.nodeId) {
+				if (!existingItem?.nodeId) {
+					const securityClasses = {
+						s2Unauthenticated: item.s2Unauthenticated,
+						s2Authenticated: item.s2Authenticated,
+						s2AccessControl: item.s2AccessControl,
+						s0Legacy: item.s0Legacy,
+					}
+					delete item.s2AccessControl
+					delete item.s2Authenticated
+					delete item.s2Unauthenticated
+					delete item.s0Legacy
 
-				item.securityClasses = securityClasses
+					item.securityClasses = securityClasses
+				}
 
 				if (existingItem) {
 					// extend existing item props that are not shown in dialog
 					item = { ...existingItem, ...item }
 				}
-				this.apiRequest('provisionSmartStartNode', [
-					this.convertItem(item),
-				])
+
+				this.updateItem(item)
+			} else if (Object.keys(item).length > 0 && !item.dsk) {
+				this.showSnackbar('DSK is required', 'error')
 			}
 		},
 		async removeItem(item) {
 			if (
-				await this.$listeners.showConfirm(
+				await this.app.confirm(
 					'Attention',
 					`Are you sure you want to delete this item from provisioning? Removing it from provisioning will not exclude the node`,
-					'alert'
+					'alert',
 				)
 			) {
-				this.apiRequest('unprovisionSmartStartNode', [item.dsk])
-				this.refreshItems()
+				const response = await this.app.apiRequest(
+					'unprovisionSmartStartNode',
+					[item.dsk],
+				)
+
+				if (response.success) {
+					this.showSnackbar(`Node ${item.nodeId} removed`, 'success')
+					this.refreshItems()
+				}
 			}
 		},
 		parseItems(items) {
@@ -393,13 +705,14 @@ export default {
 				return {
 					...item,
 					status: !item.status,
+					protocol: item.protocol ?? Protocols.ZWave,
 					securityClasses: parseSecurityClasses(
 						item.securityClasses,
-						false
+						false,
 					),
 					requestedSecurityClasses: parseSecurityClasses(
 						item.requestedSecurityClasses,
-						item.requestedSecurityClasses ? false : true
+						item.requestedSecurityClasses ? false : true,
 					),
 				}
 			})
@@ -408,70 +721,16 @@ export default {
 			item = {
 				...item,
 				status: item.status ? 0 : 1,
+				protocol: item.protocol ?? Protocols.ZWave,
 				securityClasses: securityClassesToArray(item.securityClasses),
 				requestedSecurityClasses: securityClassesToArray(
-					item.requestedSecurityClasses
+					item.requestedSecurityClasses ||
+						parseSecurityClasses([], true),
 				),
 			}
 
 			return item
 		},
-		apiRequest(apiName, args) {
-			this.$emit('apiRequest', apiName, args)
-		},
-	},
-	mounted() {
-		// init socket events
-		this.socket.on(socketEvents.api, async (data) => {
-			if (data.success) {
-				switch (data.api) {
-					case 'getProvisioningEntries':
-						this.items = this.parseItems(data.result)
-						break
-					case 'unprovisionSmartStartNode':
-						this.showSnackbar(
-							'Node successfully removed',
-							'success'
-						)
-						this.refreshItems()
-						break
-					case 'provisionSmartStartNode':
-						this.showSnackbar(
-							`Node successfully ${
-								this.edited ? 'updated' : 'added'
-							}`,
-							'success'
-						)
-						this.edited = false
-						this.refreshItems()
-						break
-					default:
-						this.showSnackbar(
-							'Successfully call api ' + data.api,
-							'success'
-						)
-				}
-			} else {
-				this.showSnackbar(
-					'Error while calling api ' + data.api + ': ' + data.message,
-					'error'
-				)
-			}
-		})
-
-		if (this.socket.connected) {
-			this.refreshItems()
-		} else {
-			this.socket.once('connect', () => {
-				this.refreshItems()
-			})
-		}
-	},
-	beforeDestroy() {
-		if (this.socket) {
-			// unbind events
-			this.socket.off(socketEvents.api)
-		}
 	},
 }
 </script>

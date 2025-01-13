@@ -1,6 +1,6 @@
 <template>
 	<v-container grid-list-md>
-		<v-row class="pa-5">
+		<v-row justify="center" class="pa-5">
 			<v-data-table
 				:headers="headers"
 				:items="associations"
@@ -25,7 +25,7 @@
 					<v-btn
 						text
 						color="primary"
-						@click="getAssociations"
+						@click="getAssociations(true)"
 						class="mb-2"
 						>Refresh</v-btn
 					>
@@ -35,7 +35,7 @@
 						node.groups.find(
 							(g) =>
 								g.value === item.groupId &&
-								g.endpoint === item.endpoint
+								g.endpoint === item.endpoint,
 						).text
 					}}
 				</template>
@@ -68,7 +68,6 @@
 			@add="addAssociation"
 			@close="dialogAssociation = false"
 			v-model="dialogAssociation"
-			:nodes="nodes"
 			:node="node"
 			:associations="associations"
 		/>
@@ -76,22 +75,22 @@
 </template>
 
 <script>
-import DialogAssociation from '@/components/dialogs/DialogAssociation'
-import {
-	socketEvents,
-	inboundEvents as socketActions,
-} from '@/../server/lib/SocketEvents'
 import { mapState, mapActions } from 'pinia'
 
 import useBaseStore from '../../stores/base.js'
+import InstancesMixin from '../../mixins/InstancesMixin.js'
+import { getEnumMemberName } from 'zwave-js/safe'
+import { AssociationCheckResult } from '@zwave-js/cc/safe'
+import { getAssociationAddress } from '../../lib/utils'
 
 export default {
 	components: {
-		DialogAssociation,
+		DialogAssociation: () =>
+			import('@/components/dialogs/DialogAssociation.vue'),
 	},
+	mixins: [InstancesMixin],
 	props: {
 		node: Object,
-		socket: Object,
 	},
 	data() {
 		return {
@@ -110,26 +109,11 @@ export default {
 		...mapState(useBaseStore, ['nodes', 'nodesMap']),
 	},
 	mounted() {
-		this.socket.on(socketEvents.api, (data) => {
-			if (
-				data.success &&
-				data.api === 'getAssociations' &&
-				data.originalArgs[0] === this.node.id
-			) {
-				this.associations = data.result
-			}
-		})
-
 		this.getAssociations()
 	},
 	methods: {
 		...mapActions(useBaseStore, ['showSnackbar']),
-		getAssociationAddress(ass) {
-			return {
-				nodeId: ass.nodeId,
-				endpoint: ass.endpoint === null ? undefined : ass.endpoint,
-			}
-		},
+		getAssociationAddress,
 		getNodeName(nodeId) {
 			const node = this.nodes[this.nodesMap.get(nodeId)]
 			return node ? node._name : 'NodeID_' + nodeId
@@ -145,21 +129,30 @@ export default {
 
 			return endpoint >= 0 ? 'Endpoint ' + endpoint : 'No Endpoint'
 		},
-		apiRequest(apiName, args) {
-			if (this.socket.connected) {
-				const data = {
-					api: apiName,
-					args: args,
-				}
-				this.socket.emit(socketActions.zwave, data)
-			} else {
-				this.showSnackbar('Socket disconnected', 'error')
+		async getAssociations(ask = false) {
+			let refresh = false
+			if (ask && this.node.status !== 'Dead') {
+				refresh = await this.app.confirm(
+					'Info',
+					`Do you want to force query associations?${
+						this.node.status === 'Alive'
+							? ''
+							: ' This node is Asleep, so you should wake it up first.'
+					}`,
+					'info',
+				)
+			}
+			const response = await this.app.apiRequest('getAssociations', [
+				this.node.id,
+				refresh,
+			])
+
+			if (response.success) {
+				this.associations = response.result
+				this.showSnackbar('Associations updated', 'success')
 			}
 		},
-		getAssociations() {
-			this.apiRequest('getAssociations', [this.node.id])
-		},
-		addAssociation(association) {
+		async addAssociation(association) {
 			const target = !isNaN(association.target)
 				? parseInt(association.target)
 				: association.target.id
@@ -181,15 +174,24 @@ export default {
 				[toAdd],
 			]
 
-			this.apiRequest('addAssociations', args)
+			const response = await this.app.apiRequest('addAssociations', args)
 
-			// wait a moment before refresh to check if the node
-			// has been added to the group correctly
-			setTimeout(this.getAssociations, 1000)
+			if (response.success) {
+				const checkResult = response.result[0]
 
+				if (checkResult === AssociationCheckResult.OK) {
+					this.showSnackbar('Association added', 'success')
+					this.getAssociations()
+				} else {
+					this.showSnackbar(
+						`Error while adding association: ${getEnumMemberName(AssociationCheckResult, checkResult)}`,
+						'error',
+					)
+				}
+			}
 			this.dialogAssociation = false
 		},
-		removeAssociation(association) {
+		async removeAssociation(association) {
 			const args = [
 				this.getAssociationAddress({
 					nodeId: this.node.id,
@@ -204,18 +206,38 @@ export default {
 				],
 			]
 
-			this.apiRequest('removeAssociations', args)
-			// wait a moment before refresh to check if the node
-			// has been added to the group correctly
-			setTimeout(this.getAssociations, 1000)
+			const response = await this.app.apiRequest(
+				'removeAssociations',
+				args,
+			)
+
+			if (response.success) {
+				this.showSnackbar('Association removed', 'success')
+				this.getAssociations()
+			}
 		},
-		removeAllAssociations() {
+		async removeAllAssociations() {
 			const args = [this.node.id]
 
-			this.apiRequest('removeAllAssociations', args)
-			// wait a moment before refresh to check if the node
-			// has been added to the group correctly
-			setTimeout(this.getAssociations, 1000)
+			if (
+				!(await this.app.confirm(
+					'Attention',
+					`Are you sure you want to remove all associations from this node? This will also remove lifeline association if it exists.`,
+					'alert',
+				))
+			) {
+				return
+			}
+
+			const response = await this.app.apiRequest(
+				'removeAllAssociations',
+				args,
+			)
+
+			if (response.success) {
+				this.showSnackbar('Association removed', 'success')
+				this.getAssociations()
+			}
 		},
 	},
 }

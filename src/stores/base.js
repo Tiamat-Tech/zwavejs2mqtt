@@ -1,33 +1,54 @@
 import { defineStore } from 'pinia'
-import { $set } from '../lib/utils'
+import { $set, deepEqual } from '../lib/utils'
+import logger from '../lib/logger'
 
-import { Settings } from '@/modules/Settings'
+import { Settings } from '../modules/Settings'
 
 const settings = new Settings(localStorage)
 
+const log = logger.get('Store:Base')
+
 const useBaseStore = defineStore('base', {
 	state: () => ({
+		inited: false,
 		auth: undefined,
-		nodesManagerOpen: false,
 		controllerId: undefined,
 		serial_ports: [],
 		scales: [],
 		nodes: [],
 		nodesMap: new Map(),
 		user: {},
+		tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+		locale: undefined, // uses default browser locale
+		preferences: settings.load('preferences', {
+			eventsList: {},
+			smartStartTable: {},
+		}),
 		zwave: {
+			enabled: true,
 			port: '/dev/zwave',
 			allowBootloaderOnly: false,
 			commandsTimeout: 30,
 			logLevel: 'debug',
-			logEnabled: true,
+			rf: {
+				region: undefined,
+				txPower: {
+					powerlevel: undefined,
+					measured0dBm: undefined,
+				},
+			},
 			securityKeys: {
-				S2_Unauthenticated: undefined,
-				S2_Authenticated: undefined,
-				S2_AccessControl: undefined,
-				S0_Legacy: undefined,
+				S2_Unauthenticated: '',
+				S2_Authenticated: '',
+				S2_AccessControl: '',
+				S0_Legacy: '',
+			},
+			securityKeysLongRange: {
+				S2_Authenticated: '',
+				S2_AccessControl: '',
 			},
 			deviceConfigPriorityDir: '',
+			logEnabled: true,
 			logToFile: true,
 			maxFiles: 7,
 			serverEnabled: false,
@@ -38,6 +59,8 @@ const useBaseStore = defineStore('base', {
 			serverHost: undefined,
 			maxNodeEventsQueueSize: 100,
 			higherReportsTimeout: false,
+			disableControllerRecovery: false,
+			disableWatchdog: false,
 		},
 		backup: {
 			storeBackup: false,
@@ -61,6 +84,25 @@ const useBaseStore = defineStore('base', {
 			username: undefined,
 			password: undefined,
 		},
+		zniffer: {
+			enabled: false,
+			port: '',
+			logEnabled: true,
+			logToFile: true,
+			maxFiles: 7,
+			securityKeys: {
+				S2_Unauthenticated: '',
+				S2_Authenticated: '',
+				S2_AccessControl: '',
+				S0_Legacy: '',
+			},
+			securityKeysLongRange: {
+				S2_Authenticated: '',
+				S2_AccessControl: '',
+			},
+			convertRSSI: false,
+			defaultFrequency: undefined,
+		},
 		devices: [],
 		gateway: {
 			type: 0,
@@ -75,26 +117,48 @@ const useBaseStore = defineStore('base', {
 			logToFile: false,
 			values: [],
 			jobs: [],
+			disableChangelog: false,
+			notifyNewVersions: false,
 		},
 		appInfo: {
 			homeid: '',
 			homeHex: '',
 			appVersion: '',
 			zwaveVersion: '',
+			serverVersion: '',
 			controllerStatus: 'Unknown',
 			newConfigVersion: undefined,
+		},
+		znifferState: {
+			error: '',
+			started: false,
+			frequency: false,
 		},
 		ui: {
 			darkMode: settings.load('dark', false),
 			navTabs: settings.load('navTabs', false),
+			compactMode: settings.load('compact', false),
+			streamerMode: settings.load('streamerMode', false),
 		},
 	}),
 	getters: {
 		controllerNode() {
 			return this.controllerId ? this.getNode(this.controllerId) : null
 		},
+		settings() {
+			return settings
+		},
 	},
 	actions: {
+		getDateTimeString(date) {
+			if (typeof date === 'string' || typeof date === 'number') {
+				date = new Date(date)
+			}
+
+			return date.toLocaleString(this.locale, {
+				timeZone: this.tz,
+			})
+		},
 		getNode(id) {
 			if (typeof id === 'string') {
 				id = parseInt(id)
@@ -115,8 +179,12 @@ const useBaseStore = defineStore('base', {
 		showSnackbar(text, color = 'info', timeout = 3000) {
 			// empty mutation, will be caught in App.vue $onAction
 		},
-		setUser(data) {
-			Object.assign(this.user, data)
+		// eslint-disable-next-line no-unused-vars
+		updateMeshGraph(node) {
+			// empty mutation, will be caught in Mesh.vue $onAction
+		},
+		onUserLogged(user) {
+			Object.assign(this.user, user)
 		},
 		setControllerStatus(data) {
 			this.appInfo.controllerStatus = data
@@ -129,6 +197,12 @@ const useBaseStore = defineStore('base', {
 			this.appInfo.serverVersion = data.serverVersion
 			this.appInfo.newConfigVersion = data.newConfigVersion
 		},
+		setZnifferState(data) {
+			this.znifferState = {
+				...this.znifferState,
+				...data,
+			}
+		},
 		setValue(valueId) {
 			const toReplace = this.getValue(valueId)
 			const node = this.getNode(valueId.nodeId)
@@ -136,6 +210,9 @@ const useBaseStore = defineStore('base', {
 			if (node && toReplace) {
 				const index = node.values.indexOf(toReplace)
 				if (index >= 0) {
+					if (valueId.newValue === undefined) {
+						valueId.newValue = valueId.value
+					}
 					node.values.splice(index, 1, valueId)
 				}
 			}
@@ -146,11 +223,6 @@ const useBaseStore = defineStore('base', {
 			if (valueId) {
 				valueId.newValue = data.value
 				valueId.value = data.value
-
-				if (valueId.toUpdate) {
-					this.showSnackbar('Value updated', 'success')
-					valueId.toUpdate = false
-				}
 			} else {
 				// means that this value has been added
 				const node = this.getNode(data.nodeId)
@@ -171,10 +243,28 @@ const useBaseStore = defineStore('base', {
 				}
 			}
 		},
-		initNode(n) {
-			const values = []
-			// transform object in array
+		updateNode(n, isPartial = false) {
+			let index = this.nodesMap.get(n.id)
 
+			// we received a partial node but we don't have
+			// the full node yet, so ignore it
+			if (isPartial && index === undefined) {
+				log.warn(
+					'Received partial node info about an unknown node, skipping...',
+					n,
+				)
+				return
+			}
+
+			// when a node in included this is called multiple times:
+			// - on node found event, isPartial = false
+			// - on node added, isPartial = false
+			// - on different interview stages updates, isPartial = true
+			// - on node ready, isPartial = false
+
+			const values = []
+
+			// transform values object in array
 			if (n.values) {
 				for (const k in n.values) {
 					n.values[k].newValue = n.values[k].value
@@ -182,8 +272,6 @@ const useBaseStore = defineStore('base', {
 				}
 				n.values = values
 			}
-
-			let index = this.nodesMap.get(n.id)
 
 			if (index >= 0) {
 				n = Object.assign(this.nodes[index], n)
@@ -193,9 +281,18 @@ const useBaseStore = defineStore('base', {
 				? n.name + (n.loc ? ' (' + n.loc + ')' : '')
 				: 'NodeID_' + n.id
 
-			// prevent empty stats on startup
+			// make them observable
 			if (!n.statistics) {
 				n.statistics = false
+			}
+
+			// make it observable
+			if (!n.applicationRoute) {
+				n.applicationRoute = false
+			}
+
+			if (!n.prioritySUCReturnRoute) {
+				n.prioritySUCReturnRoute = false
 			}
 
 			if (n.isControllerNode) {
@@ -217,7 +314,7 @@ const useBaseStore = defineStore('base', {
 		initNodes(nodes) {
 			this.resetNodes()
 			for (let i = 0; i < nodes.length; i++) {
-				this.initNode(nodes[i])
+				this.updateNode(nodes[i])
 			}
 		},
 		removeNode(n) {
@@ -249,13 +346,17 @@ const useBaseStore = defineStore('base', {
 		},
 		setStatistics(data) {
 			const node = this.getNode(data.nodeId)
+			delete data.nodeId
+
+			let emitMeshUpdate = false
+
 			if (node) {
 				let lastReceive = node.lastReceive
 				let lastTransmit = node.lastTransmit
 				let errorReceive = false
 				let errorTransmit = false
 
-				if (node.statistics) {
+				if (node.statistics && data.statistics) {
 					if (node.isControllerNode) {
 						const prev = node.statistics
 						const cur = data.statistics
@@ -315,12 +416,64 @@ const useBaseStore = defineStore('base', {
 							errorReceive = false
 							lastReceive = data.lastActive
 						}
+
+						if (
+							!deepEqual(prev.lwr, cur.lwr) ||
+							!deepEqual(prev.nlwr, cur.nlwr) ||
+							cur.rssi != prev.rssi
+						) {
+							// mesh graph changed
+							emitMeshUpdate = true
+						}
 					}
 				}
 
+				if (node.isControllerNode && data.bgRssi) {
+					if (!node.bgRSSIPoints) {
+						node.bgRSSIPoints = []
+					}
+					node.bgRSSIPoints.push(data.bgRssi)
+
+					if (node.bgRSSIPoints.length > 360) {
+						const firstPoint = node.bgRSSIPoints[0]
+						const lastPoint =
+							node.bgRSSIPoints[node.bgRSSIPoints.length - 1]
+
+						const maxTimeSpan = 3 * 60 * 60 * 1000 // 3 hours
+
+						if (
+							lastPoint.timestamp - firstPoint.timestamp >
+							maxTimeSpan
+						) {
+							node.bgRSSIPoints.shift()
+						}
+					}
+				}
+
+				const routeUpdated = (prop) => {
+					return (
+						data[prop] === false ||
+						(data[prop] !== undefined &&
+							!deepEqual(data[prop], node[prop]))
+					)
+				}
+
+				if (
+					!emitMeshUpdate &&
+					(routeUpdated('applicationRoute') ||
+						routeUpdated('prioritySUCReturnRoute') ||
+						routeUpdated('customSUCReturnRoutes'))
+				) {
+					// mesh graph changed
+					emitMeshUpdate = true
+				}
+
+				if (emitMeshUpdate) {
+					this.updateMeshGraph(node)
+				}
+
 				Object.assign(node, {
-					statistics: data.statistics,
-					lastActive: data.lastActive,
+					...data,
 					lastReceive,
 					lastTransmit,
 					errorReceive,
@@ -328,20 +481,33 @@ const useBaseStore = defineStore('base', {
 				})
 			}
 		},
-		setHealProgress(nodesProgress) {
+		setRebuildRoutesProgress(nodesProgress) {
 			for (const [nodeId, progress] of nodesProgress) {
 				const node = this.getNode(nodeId)
 				if (node) {
-					$set(node, 'healProgress', progress)
+					$set(node, 'rebuildRoutesProgress', progress)
 				}
 			}
 		},
 		initSettings(conf) {
 			if (conf) {
 				Object.assign(this.zwave, conf.zwave || {})
+				if (!this.zwave.rf) {
+					this.zwave.rf = {}
+				}
+
+				if (!this.zwave.rf.txPower) {
+					this.zwave.rf.txPower = {}
+				}
 				Object.assign(this.mqtt, conf.mqtt || {})
+				Object.assign(this.zniffer, conf.zniffer || {})
 				Object.assign(this.gateway, conf.gateway || {})
 				Object.assign(this.backup, conf.backup || {})
+				Object.assign(this.ui, conf.ui || {})
+
+				// ensure local storage is in sync with the store
+				// to prevent theme switch on startup
+				this.setDarkMode(this.ui.darkMode)
 			}
 		},
 		initPorts(ports) {
@@ -381,19 +547,72 @@ const useBaseStore = defineStore('base', {
 		},
 		init(data) {
 			if (data) {
+				if (data.tz) {
+					// validate timezone
+					try {
+						new Intl.DateTimeFormat(undefined, {
+							timeZone: data.tz,
+						})
+						this.tz = data.tz
+					} catch (e) {
+						log.error('Invalid timezone:', data.tz)
+						this.showSnackbar(
+							`Invalid timezone: ${data.tz}`,
+							'error',
+						)
+					}
+				}
+
+				if (data.locale) {
+					this.locale = data.locale
+				}
+
 				this.initSettings(data.settings)
 				this.initPorts(data.serial_ports)
 				this.initScales(data.scales)
 				this.initDevices(data.devices)
+
+				this.inited = true
 			}
 		},
 		setDarkMode(value) {
 			settings.store('dark', value)
+			// the `darkMode` watcher in App.vue will change vuetify theme
 			this.ui.darkMode = value
+
+			const metaThemeColor = document.querySelector(
+				'meta[name=theme-color]',
+			)
+			const metaThemeColor2 = document.querySelector(
+				'meta[name=msapplication-TileColor]',
+			)
+
+			metaThemeColor.setAttribute('content', value ? '#000' : '#fff')
+			metaThemeColor2.setAttribute('content', value ? '#000' : '#fff')
 		},
 		setNavTabs(value) {
 			settings.store('navTabs', value)
 			this.ui.navTabs = value
+		},
+		setStreamerMode(value) {
+			settings.store('streamerMode', value)
+			this.ui.streamerMode = value
+		},
+		setCompactMode(value) {
+			settings.store('compact', value)
+			this.ui.compactMode = value
+		},
+		getPreference(key, defaultValue) {
+			return {
+				...defaultValue,
+				...(this.preferences[key] || {}),
+			}
+		},
+		savePreferences(pref) {
+			settings.store(
+				'preferences',
+				pref ? Object.assign(this.preferences, pref) : this.preferences,
+			)
 		},
 	},
 })

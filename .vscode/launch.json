@@ -1,0 +1,34 @@
+{
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug",
+			"runtimeExecutable": "npm",
+			"runtimeArgs": [
+				"run",
+				"dev:server"
+			],
+			"env": {},
+			"console": "integratedTerminal",
+			"skipFiles": ["<node_internals>/**"],
+			"sourceMaps": true,
+			"preLaunchTask": "ViteJS",
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug HTTPS",
+			"runtimeExecutable": "npm",
+			"runtimeArgs": [
+				"run",
+				"dev:server"
+			],
+			"env": {},
+			"console": "integratedTerminal",
+			"skipFiles": ["<node_internals>/**"],
+			"sourceMaps": true,
+			"preLaunchTask": "ViteJS HTTPS",
+		},
+	]
+}

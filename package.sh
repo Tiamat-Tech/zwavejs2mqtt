@@ -33,6 +33,11 @@ ask() {
 	done
 }
 
+pkg() {
+	echo "Executing command: npx pkg $@"
+	npx pkg $@
+}
+
 APP=$(node -p "require('./package.json').name")
 PKG_FOLDER="pkg"
 
@@ -42,7 +47,7 @@ echo "App-name: $APP"
 VERSION=$(node -p "require('./package.json').version")
 echo "Version: $VERSION"
 
-NODE_MAJOR=$(node -v | egrep -o '[0-9].' | head -n 1)
+NODE_MAJOR=$(node -v | grep -E -o '[0-9].' | head -n 1)
 
 echo "## Clear $PKG_FOLDER folder"
 rm -rf $PKG_FOLDER/*
@@ -51,7 +56,7 @@ rm -rf $PKG_FOLDER/*
 if [[ "$@" == *"--arch"* ]]; then
 	ARCH=$(echo "$@" | grep -oP '(?<=--arch=)[^ ]+')
 else
-	ARCH=$(arch)
+	ARCH=$(uname -m)
 fi
 
 echo "## Architecture: $ARCH"
@@ -62,34 +67,40 @@ if [ ! -z "$1" ]; then
 
 	# skip build if args contains --skip-build
 	if [[ "$@" != *"--skip-build"* ]]; then
-		yarn run build
+		npm run build
 	else
 		echo "## Skipping build..."
 	fi
-	
-	if [ "$ARCH" = "aarch64" ]; then
-		echo "Executing command: pkg package.json -t node$NODE_MAJOR-linux-arm64 --out-path $PKG_FOLDER"
+
+	# if --bundle is passed as argument, cd to `build` folder
+	if [[ "$@" == *"--bundle"* ]]; then
+		echo "## Building bundle..."
+		echo ''
+		npm run bundle
+		echo "## Changing directory to build folder"
+		cd build
+	fi
+
+	if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
 		pkg package.json -t node$NODE_MAJOR-linux-arm64 --out-path $PKG_FOLDER
 	elif [ "$ARCH" = "armv7" ]; then
-		echo "Executing command: pkg package.json -t node$NODE_MAJOR-linux-armv7 --out-path $PKG_FOLDER"
 		pkg package.json -t node$NODE_MAJOR-linux-armv7 --out-path $PKG_FOLDER --public-packages=*
 	else
-		echo "Executing command: pkg package.json -t node$NODE_MAJOR-linux-x64,node$NODE_MAJOR-win-x64 --out-path $PKG_FOLDER"
 		pkg package.json -t node$NODE_MAJOR-linux-x64,node$NODE_MAJOR-win-x64  --out-path $PKG_FOLDER
 	fi
-	
+
 else
 
 	if ask "Re-build $APP?"; then
 		echo "## Building application"
-		yarn run build
+		npm run build
 	fi
 
 	echo '###################################################'
 	echo '## Choose architecture to build'
 	echo '###################################################'
 	echo ' '
-	echo 'Your architecture is' $(arch)
+	echo 'Your architecture is' $ARCH
 	PS3="Architecture: >"
 	options=(
 		"x64"
@@ -147,7 +158,7 @@ mkdir store -p
 
 if [ ! -z "$1" ]; then
 
-	if [ "$ARCH" = "aarch64" ]; then
+	if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
 		echo "## Create zip file $APP-v$VERSION-linux-arm64"
 		zip -r $APP-v$VERSION-linux-arm64.zip store $APP
 	elif [ "$ARCH" = "armv7" ]; then
@@ -160,7 +171,7 @@ if [ ! -z "$1" ]; then
 		echo "## Create zip file $APP-v$VERSION-linux"
 		zip -r $APP-v$VERSION-linux.zip store $APP-linux
 	fi
-	
+
 else
 	echo "## Create zip file $APP-v$VERSION"
 	zip -r $APP-v$VERSION.zip store $APP

@@ -7,7 +7,13 @@
 		:persistent="options.persistent"
 	>
 		<v-card>
-			<v-toolbar :color="options.color" dark dense flat>
+			<v-toolbar
+				class="sticky-title"
+				:color="options.color"
+				dark
+				dense
+				flat
+			>
 				<v-toolbar-title class="white--text">{{
 					title
 				}}</v-toolbar-title>
@@ -15,9 +21,9 @@
 			<v-card-text
 				v-show="!!message"
 				v-html="message"
-				class="pa-4"
+				class="px-4 pt-4"
 			></v-card-text>
-			<v-card-text v-if="options.inputs" class="pa-4">
+			<v-card-text v-if="options.inputs" class="px-4">
 				<v-container grid-list-md>
 					<v-form
 						v-model="valid"
@@ -27,7 +33,7 @@
 					>
 						<v-row>
 							<v-col
-								v-for="(input, index) in options.inputs"
+								v-for="(input, index) in inputs"
 								:key="index"
 								:cols="input.cols || 12"
 							>
@@ -36,7 +42,7 @@
 									v-model.trim="values[input.key]"
 									:label="input.label"
 									:hint="input.hint"
-									:rules="input.rules || []"
+									:rules="inputProps[input.key].rules"
 									:required="input.required"
 									:min="input.min"
 									:disabled="input.disabled"
@@ -48,7 +54,7 @@
 									v-model.number="values[input.key]"
 									:label="input.label"
 									:hint="input.hint"
-									:rules="input.rules || []"
+									:rules="inputProps[input.key].rules"
 									type="number"
 									:persistent-hint="!!input.hint"
 									:required="input.required"
@@ -59,7 +65,7 @@
 								<v-switch
 									v-if="input.type === 'boolean'"
 									v-model="values[input.key]"
-									:rules="input.rules || []"
+									:rules="inputProps[input.key].rules"
 									:label="input.label"
 									:hint="input.hint"
 									:persistent-hint="!!input.hint"
@@ -69,7 +75,7 @@
 								<v-checkbox
 									v-if="input.type === 'checkbox'"
 									v-model="values[input.key]"
-									:rules="input.rules || []"
+									:rules="inputProps[input.key].rules"
 									:label="input.label"
 									:hint="input.hint"
 									:persistent-hint="!!input.hint"
@@ -79,21 +85,45 @@
 								<v-select
 									v-if="
 										input.type === 'list' &&
-										!input.allowManualEntry
+										!input.allowManualEntry &&
+										!input.autocomplete
 									"
 									v-model="values[input.key]"
 									:item-text="input.itemText || 'text'"
 									:item-value="input.itemValue || 'value'"
 									:items="input.items"
-									:rules="input.rules || []"
+									:rules="inputProps[input.key].rules"
 									:label="input.label"
-									@change="input.onChange"
+									@change="
+										inputProps[input.key].onChange($event)
+									"
 									:persistent-hint="!!input.hint"
 									:multiple="!!input.multiple"
 									:hint="input.hint"
 									:required="input.required"
 									:disabled="input.disabled"
 								></v-select>
+								<v-autocomplete
+									v-if="
+										input.type === 'list' &&
+										!input.allowManualEntry &&
+										input.autocomplete
+									"
+									v-model="values[input.key]"
+									:item-text="input.itemText || 'text'"
+									:item-value="input.itemValue || 'value'"
+									:items="input.items"
+									:rules="inputProps[input.key].rules"
+									:label="input.label"
+									@change="
+										inputProps[input.key].onChange($event)
+									"
+									:persistent-hint="!!input.hint"
+									:multiple="!!input.multiple"
+									:hint="input.hint"
+									:required="input.required"
+									:disabled="input.disabled"
+								></v-autocomplete>
 								<v-combobox
 									v-if="
 										input.type === 'list' &&
@@ -104,7 +134,7 @@
 									:item-value="input.itemValue || 'value'"
 									chips
 									:items="input.items"
-									:rules="input.rules || []"
+									:rules="inputProps[input.key].rules"
 									:label="input.label"
 									:multiple="!!input.multiple"
 									:persistent-hint="!!input.hint"
@@ -114,12 +144,18 @@
 									:disabled="input.disabled"
 								>
 								</v-combobox>
+								<list-input
+									v-if="input.type === 'array' && input.list"
+									v-model="values[input.key]"
+									:rules="inputProps[input.key].rules"
+									:input="input"
+								></list-input>
 								<v-file-input
 									v-if="input.type === 'file'"
 									v-model.trim="values[input.key]"
 									:label="input.label"
 									:hint="input.hint"
-									:rules="input.rules || []"
+									:rules="inputProps[input.key].rules"
 									:required="input.required"
 									:persistent-hint="!!input.hint"
 									:accept="input.accept"
@@ -141,7 +177,9 @@
 								</v-container>
 								<v-container v-if="input.type === 'button'">
 									<v-btn
-										@click="input.onChange"
+										@click="
+											inputProps[input.key].onChange()
+										"
 										:color="input.color"
 										:outlined="input.outlined"
 									>
@@ -158,130 +196,14 @@
 				</v-container>
 			</v-card-text>
 			<v-card-text v-else-if="options.qrScan" class="pa-4">
-				<v-tabs v-model="scanTab" grow icons-and-text>
-					<v-tab>
-						Scan
-						<v-icon>photo_camera</v-icon>
-					</v-tab>
-
-					<v-tab>
-						Import
-						<v-icon>image</v-icon>
-					</v-tab>
-					<v-tab>
-						Text
-						<v-icon>border_color</v-icon>
-					</v-tab>
-				</v-tabs>
-
-				<v-tabs-items grow v-model="scanTab">
-					<!-- QR-Code  -->
-					<v-tab-item>
-						<v-card flat>
-							<v-card-text>
-								<v-select
-									:items="videoDevices"
-									v-model="selectedCamera"
-									label="Camera"
-									item-text="label"
-									item-value="deviceId"
-								></v-select>
-								<qrcode-stream
-									@detect="onDetect"
-									@init="onInit"
-									:camera="selectedCamera"
-									ref="qrStream"
-									:track="paintBoundingBox"
-								>
-									<center v-if="loadingQr">
-										<p class="caption">Loading camera</p>
-										<v-progress-circular
-											indeterminate
-										></v-progress-circular>
-									</center>
-									<center v-else-if="retryQrLoad">
-										<v-btn
-											@click.stop="retryQr"
-											color="primary"
-											>Retry</v-btn
-										>
-									</center>
-								</qrcode-stream>
-							</v-card-text>
-						</v-card>
-					</v-tab-item>
-
-					<!-- Image import -->
-					<v-tab-item>
-						<v-card flat>
-							<v-card-text>
-								<v-file-input
-									small-chips
-									truncate-length="15"
-									label="Import QR-Code"
-									:multiple="false"
-									show-size
-									accept="image/*"
-									counter
-									@change="onQrImport"
-								></v-file-input>
-
-								<qrcode-drop-zone
-									class="mt-2"
-									@detect="onDetect"
-								>
-									<v-col class="dropzone text-center">
-										<v-icon size="60px"
-											>cloud_upload</v-icon
-										>
-										<p
-											class="caption font-weight-bold text-uppercase"
-										>
-											Drop the image here
-										</p>
-									</v-col>
-								</qrcode-drop-zone>
-							</v-card-text>
-						</v-card>
-					</v-tab-item>
-
-					<!-- Text  -->
-					<v-tab-item>
-						<v-form
-							ref="qrForm"
-							v-model="qrForm"
-							@submit.prevent="onDetect(qrString)"
-						>
-							<v-card flat>
-								<v-card-text>
-									<v-row>
-										<v-text-field
-											label="QR Code text"
-											hint="Manually insert the QR Code string"
-											v-model.trim="qrString"
-											:rules="[validQR]"
-										>
-										</v-text-field>
-									</v-row>
-								</v-card-text>
-								<v-card-actions>
-									<v-btn
-										type="submit"
-										color="primary"
-										:disabled="!qrForm"
-										@click="onDetect(qrString)"
-										>Confirm</v-btn
-									>
-								</v-card-actions>
-							</v-card>
-						</v-form>
-					</v-tab-item>
-				</v-tabs-items>
-				<v-alert dense v-if="qrCodeError" type="error">{{
-					qrCodeError
-				}}</v-alert>
+				<!-- QR-Code  -->
+				<qr-reader
+					v-if="dialog"
+					@result="onDetect"
+					:rules="[validQR]"
+				></qr-reader>
 			</v-card-text>
-			<v-card-actions class="pt-0">
+			<v-card-actions class="sticky-actions pt-0">
 				<v-spacer></v-spacer>
 				<v-btn
 					v-if="!options.qrScan"
@@ -302,16 +224,7 @@
 	</v-dialog>
 </template>
 
-<style scoped>
-.dropzone {
-	border: 4px dashed #ccc;
-	border-radius: 20px;
-	cursor: pointer;
-}
-</style>
 <script>
-// import Prism Editor
-import { PrismEditor } from 'vue-prism-editor'
 import { tryParseDSKFromQRCodeString } from '@zwave-js/core/safe'
 import 'vue-prism-editor/dist/prismeditor.min.css' // import the styles somewhere
 
@@ -320,18 +233,16 @@ import { highlight, languages } from 'prismjs/components/prism-core'
 import 'prismjs/components/prism-clike'
 import 'prismjs/components/prism-javascript'
 import 'prismjs/themes/prism-tomorrow.css'
-
-import { QrcodeStream, QrcodeDropZone } from 'vue-qrcode-reader'
-import { processFile } from 'vue-qrcode-reader/src/misc/scanner.js'
+import { wrapFunc, noop } from '../lib/utils'
 
 export default {
 	components: {
-		PrismEditor,
-		QrcodeStream,
-		QrcodeDropZone,
+		PrismEditor: () =>
+			import('vue-prism-editor').then((m) => m.PrismEditor),
+		QrReader: () => import('./custom/QrReader.vue'),
+		ListInput: () => import('./custom/ListInput.vue'),
 	},
 	data: () => ({
-		scanTab: 0,
 		dialog: false,
 		resolve: null,
 		reject: null,
@@ -340,9 +251,7 @@ export default {
 		values: {},
 		title: null,
 		options: null,
-		qrForm: true,
-		loadingQr: false,
-		qrString: '',
+		inputProps: null,
 		defaultOptions: {
 			color: 'primary',
 			width: 290,
@@ -353,20 +262,7 @@ export default {
 			qrScan: false,
 			noCancel: false,
 		},
-		qrCodeError: false,
-		selectedCamera: 'auto',
-		videoDevices: [],
-		retryQrLoad: false,
 	}),
-	watch: {
-		qrCodeError(val) {
-			if (val) {
-				setTimeout(() => {
-					this.qrCodeError = false
-				}, 5000)
-			}
-		},
-	},
 	computed: {
 		show: {
 			get() {
@@ -379,8 +275,67 @@ export default {
 				}
 			},
 		},
+		inputs() {
+			const values = this.options.values || {}
+			const inputs = this.options.inputs || []
+
+			for (const input of inputs) {
+				const inited = !!this.inputProps[input.key]
+				const inputProp = this.inputProps[input.key] ?? {
+					show: false,
+					onChange: noop,
+					rules: [],
+				}
+
+				this.inputProps = {
+					...this.inputProps,
+					[input.key]: inputProp,
+				}
+
+				// this must be re-evaluated every time `this.values` changes
+				if (typeof input.show === 'function') {
+					inputProp.show = input.show(this.values)
+				} else {
+					inputProp.show = true
+				}
+
+				if (!inited) {
+					if (input.default !== undefined) {
+						// without this code block is bugged, don't simply assign
+						this.$set(
+							this.values,
+							input.key,
+							values[input.key] ?? input.default,
+						)
+					}
+
+					if (input.rules) {
+						inputProp.rules = input.rules.map((r) =>
+							wrapFunc(r, this.values),
+						)
+					}
+
+					if (
+						input.onChange &&
+						typeof input.onChange === 'function'
+					) {
+						inputProp.onChange = input.onChange.bind(
+							this,
+							this.values,
+						)
+					}
+				}
+			}
+
+			return (
+				inputs?.filter(
+					(input) => !input.hidden && this.inputProps[input.key].show,
+				) ?? []
+			)
+		},
 	},
 	methods: {
+		noop,
 		paintBoundingBox(detectedCodes, ctx) {
 			for (const detectedCode of detectedCodes) {
 				const {
@@ -390,48 +345,6 @@ export default {
 				ctx.lineWidth = 2
 				ctx.strokeStyle = '#007bff'
 				ctx.strokeRect(x, y, width, height)
-			}
-		},
-		retryQr() {
-			this.$refs.qrStream.init()
-		},
-		async getDevices() {
-			const deviceBlackList = ['OBS Virtual Camera', 'OBS-Camera']
-
-			try {
-				const devices = (
-					await navigator.mediaDevices.enumerateDevices()
-				)
-					.filter(({ kind }) => kind === 'videoinput')
-					.filter(({ label }) => !deviceBlackList.includes(label))
-					.filter(({ label }) => !label.includes('infrared'))
-
-				const defaultCamera = [
-					{
-						deviceId: 'auto',
-						label: 'Auto',
-					},
-					{
-						deviceId: 'rear',
-						label: 'Rear',
-					},
-					{
-						deviceId: 'front',
-						label: 'Front',
-					},
-				]
-
-				this.videoDevices = [...defaultCamera, ...devices]
-
-				this.selectedCamera = this.videoDevices[0].deviceId
-			} catch (error) {
-				console.error(error)
-				this.qrCodeError = 'Cannot fetch available video devices'
-			}
-		},
-		onQrImport(qrImage) {
-			if (qrImage) {
-				this.onDetect(processFile(qrImage))
 			}
 		},
 		validQR(value) {
@@ -450,76 +363,11 @@ export default {
 				'Not valid. Must be 52 digits long and starts with "90"'
 			)
 		},
-		async onDetect(promise) {
-			try {
-				// const {
-				// 	imageData, // raw image data of image/frame
-				// 	content, // decoded String or null
-				// 	location, // QR code coordinates or null
-				// } = await promise
-
-				let content
-
-				if (typeof promise === 'string') {
-					// manually inserted string
-					if (this.qrForm) {
-						// qr form is valid
-						content = promise
-					} else {
-						return
-					}
-				} else {
-					content = (await promise).content
-				}
-
-				if (!content) {
-					this.qrCodeError = 'No QR code detected'
-					return
-				} else {
-					this.dialog = false
-					await this.$nextTick()
-					this.resolve(content)
-					this.reset()
-				}
-			} catch (error) {
-				this.qrCodeError = error.message
-			}
-		},
-		async onInit(promise) {
-			this.loadingQr = true
-			try {
-				// const { capabilities } = await promise
-				await promise
-				this.retryQrLoad = false
-				// successfully initialized
-			} catch (error) {
-				this.retryQrLoad = true
-				console.error(error)
-				if (error.name === 'NotAllowedError') {
-					this.qrCodeError =
-						'ERROR: you need to grant camera access permission'
-				} else if (error.name === 'NotFoundError') {
-					this.qrCodeError = 'ERROR: no camera on this device'
-				} else if (error.name === 'NotSupportedError') {
-					this.qrCodeError =
-						'ERROR: secure context required (HTTPS, localhost)'
-				} else if (error.name === 'NotReadableError') {
-					this.qrCodeError = 'ERROR: is the camera already in use?'
-				} else if (error.name === 'OverconstrainedError') {
-					this.qrCodeError =
-						'ERROR: installed cameras are not suitable'
-				} else if (error.name === 'StreamApiNotSupportedError') {
-					this.qrCodeError =
-						'ERROR: Stream API is not supported in this browser'
-				} else if (error.name === 'InsecureContextError') {
-					this.qrCodeError =
-						'ERROR: Camera access is only permitted in secure context. Use HTTPS or localhost rather than HTTP.'
-				} else {
-					this.qrCodeError = `ERROR: Camera error (${error.name})`
-				}
-			} finally {
-				this.loadingQr = false
-			}
+		async onDetect(qrString) {
+			this.dialog = false
+			await this.$nextTick()
+			this.resolve(qrString)
+			this.reset()
 		},
 		highlighter(code) {
 			return highlight(code, languages.js) // returns html
@@ -528,28 +376,9 @@ export default {
 			this.dialog = true
 			this.title = title
 			this.message = message
+			this.inputProps = {}
 
 			Object.assign(this.options, options)
-
-			if (options.inputs) {
-				for (const input of options.inputs) {
-					if (input.default !== undefined) {
-						// without this code block is bugged, don't simply assign
-						this.$set(this.values, input.key, input.default)
-					}
-
-					if (
-						input.onChange &&
-						typeof input.onChange === 'function'
-					) {
-						input.onChange = input.onChange.bind(this, this.values)
-					}
-				}
-			}
-
-			if (options.qrScan) {
-				this.getDevices()
-			}
 
 			return new Promise((resolve, reject) => {
 				this.resolve = resolve
@@ -577,10 +406,7 @@ export default {
 		reset() {
 			this.options = Object.assign({}, this.defaultOptions)
 			this.values = {}
-			this.qrString = ''
-			this.qrForm = true
-			this.qrCodeError = false
-			this.selectedCamera = 'auto'
+			this.inputProps = {}
 		},
 	},
 	created() {
@@ -588,3 +414,20 @@ export default {
 	},
 }
 </script>
+
+<style scoped>
+.v-card::v-deep .sticky-title {
+	position: sticky;
+	top: 0;
+	z-index: 3;
+	background-color: inherit;
+	border-bottom: 1px solid var(--v-secondary-base);
+}
+
+.v-card::v-deep .sticky-actions {
+	position: sticky;
+	z-index: 3;
+	bottom: 0;
+	background-color: inherit;
+}
+</style>

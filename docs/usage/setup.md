@@ -12,6 +12,8 @@ To configure Z-Wave JS UI, you must access it via your web browser at <http://lo
 - **Log enabled**: Enable logging for Z-Wave JS UI
 - **Log level**: Set the log level (Error, Warn, Info, Verbose, Debug, Silly)
 - **Log to file**: Enable this to store the logs to a file
+- **Disable changelog**: Disable the changelog popup on new releases
+- **Notify on new releases**: Enable this to receive a notification when a new release is available
 
 ### Device values configuration
 
@@ -100,8 +102,8 @@ Enable this to use Z-Wave JS UI as only a Control Panel
 ## MQTT
 
 - **Name**: A unique name that identifies the Gateway.
-- **Host url**: The url of the broker. Insert the protocol if present, example: `tls://localhost`. MQTT supports these protocols: `mqtt`, `mqtts`, `tcp`, `tls`, `ws` and `wss`
-- **Port**: Broker port
+- **Host url**: The url of the broker. Insert the protocol if present, example: `tls://localhost`. MQTT supports these protocols: `mqtt`, `mqtts`, `tcp`, `tls`, `ws` and `wss`. When running Zwave-JS-UI in a Docker container use the real IP of the MQTT server and not localhost or 127.0.0.1, even if it is running on the same system.
+- **Port**: Broker port, normally 1883
 - **Reconnect period**: Milliseconds between two reconnection tries
 - **Prefix**: The prefix where all values are published
 - **QoS**: Quality Of Service (check MQTT specs) of outgoing packets
@@ -134,7 +136,7 @@ Enable this to use Z-Wave JS UI as only a Control Panel
 
      - `mqtt_prefix`: the prefix set in MQTT settings
      - `node_location`: location of the Z-Wave node (optional)
-     - `node_name`: name of the node, if not set it will be `nodeID_<node_id>`
+     - `node_name`: name of the node, if not set it will be `nodeID_<node_id>`. Can also be configured to only be the `nodeId`.
      - `class_name`: the valueId command class name corresponding to the given command class number or `unknownClass_<class_id>` if the class name is not known
      - `?endpoint`: Used only with multi-instance devices. Endpoints, other than the main endpoint (0), will have: `endpoint_<endpoint>`
      - `propertyName`: the value [propertyName](https://zwave-js.github.io/node-zwave-js/#/api/valueid)

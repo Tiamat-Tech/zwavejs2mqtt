@@ -1,7 +1,7 @@
 <template>
 	<v-dialog
-		v-model="value"
-		@keydown.esc="$emit('close')"
+		v-model="isOpen"
+		@keydown.esc="close()"
 		max-width="800px"
 		persistent
 	>
@@ -9,14 +9,12 @@
 			<v-card-title>
 				<span class="headline">Nodes Manager</span>
 				<v-spacer></v-spacer>
-				<v-btn icon @click="$emit('close')"
-					><v-icon>clear</v-icon></v-btn
-				>
+				<v-btn icon @click="close()"><v-icon>clear</v-icon></v-btn>
 			</v-card-title>
 
 			<v-divider />
 
-			<v-card-text class="pa-0">
+			<v-card-text v-if="isOpen" class="pa-0">
 				<v-stepper
 					v-model="currentStep"
 					@change="changeStep"
@@ -49,7 +47,7 @@
 							:key="`${s.key}-content`"
 							:step="s.index"
 						>
-							<v-card elevation="0">
+							<v-card ref="content" elevation="0">
 								<v-card-text v-if="s.key == 'action'">
 									<v-radio-group
 										v-model="s.values.action"
@@ -119,6 +117,7 @@
 											v-if="state !== 'start'"
 											color="primary"
 											@click.stop="nextStep"
+											class="next-btn"
 											@keypress.enter="nextStep"
 										>
 											Next
@@ -127,17 +126,23 @@
 										<v-btn
 											v-else
 											color="error"
+											class="next-btn"
 											@click="stopAction"
 										>
 											Stop running {{ currentAction }}
 										</v-btn>
 									</v-card-actions>
 								</v-card-text>
+
 								<v-card-text v-if="s.key == 'replaceFailed'">
 									<v-combobox
 										label="Node"
 										v-model="s.values.replaceId"
-										:items="nodes"
+										:items="
+											nodes.filter(
+												(n) => !n.isControllerNode,
+											)
+										"
 										return-object
 										chips
 										hint="Failed node to remove. Write the node Id and press enter if not present"
@@ -148,6 +153,7 @@
 										<v-btn
 											color="primary"
 											@click.stop="nextStep"
+											class="next-btn"
 											@keypress.enter="nextStep"
 										>
 											Next
@@ -170,6 +176,7 @@
 										<v-text-field
 											label="Name"
 											persistent-hint
+											autofocus
 											hint="Node name"
 											:rules="[validateTopic]"
 											v-model.trim="s.values.name"
@@ -191,6 +198,7 @@
 											:disabled="!validNaming"
 											color="primary"
 											@click.stop="submitNameLoc"
+											class="next-btn"
 											@keypress.enter="submitNameLoc"
 										>
 											Next
@@ -204,18 +212,7 @@
 										v-model="s.values.inclusionMode"
 										mandatory
 									>
-										<v-alert
-											dense
-											border="left"
-											type="warning"
-											v-if="missingKeys.length > 0"
-										>
-											Some security keys are missing:
-											<strong>{{
-												missingKeys.join(', ')
-											}}</strong
-											>. Please check your zwave settings.
-										</v-alert>
+										<missing-keys-alert />
 										<v-radio
 											:value="InclusionStrategy.Default"
 										>
@@ -330,17 +327,17 @@
 											your device in INCLUSION MODE
 										</p>
 										<p
-											v-else-if="state === 'stop'"
-											class="mt-3 headline text-center"
-										>
-											Inclusion stopped. Checking for
-											changes...
-										</p>
-										<p
 											v-else-if="nvmProgress > 0"
 											class="mt-3 headline text-center"
 										>
 											Waiting for NVM Backup...
+										</p>
+										<p
+											v-else
+											class="mt-3 headline text-center"
+										>
+											Inclusion stopped. Checking for
+											changes...
 										</p>
 									</v-col>
 
@@ -349,6 +346,7 @@
 											v-if="!loading"
 											color="primary"
 											@click.stop="nextStep"
+											class="next-btn"
 											@keypress.enter="nextStep"
 										>
 											Next
@@ -457,6 +455,7 @@
 											v-if="!loading"
 											color="primary"
 											@click.stop="nextStep"
+											class="next-btn"
 											@keypress.enter="nextStep"
 										>
 											Next
@@ -472,113 +471,155 @@
 								</v-card-text>
 
 								<v-card-text v-if="s.key == 's2Classes'">
-									<v-checkbox
-										:disabled="
-											s.values.s2AccessControl ===
-											undefined
-										"
-										v-model="s.values.s2AccessControl"
-										label="S2 Access Control"
-										hint="Example: Door Locks, garage doors"
-										persistent-hint
-									></v-checkbox>
-									<v-checkbox
-										:disabled="
-											s.values.s2Authenticated ===
-											undefined
-										"
-										v-model="s.values.s2Authenticated"
-										label="S2 Authenticated"
-										hint="Example: Lighting, Sensors, Security Systems"
-										persistent-hint
-									></v-checkbox>
-									<v-checkbox
-										:disabled="
-											s.values.s2Unauthenticated ===
-											undefined
-										"
-										v-model="s.values.s2Unauthenticated"
-										label="S2 Unauthenticated"
-										hint="Like S2 Authenticated but without verification that the correct device is included"
-										persistent-hint
-									></v-checkbox>
-									<v-checkbox
-										:disabled="
-											s.values.s0Legacy === undefined
-										"
-										v-model="s.values.s0Legacy"
-										label="S0 legacy"
-										hint="Example: Legacy door locks without S2 support"
-										persistent-hint
-									></v-checkbox>
-									<v-checkbox
-										:disabled="
-											s.values.clientAuth === undefined
-										"
-										v-model="s.values.clientAuth"
-										label="Client-side authentication"
-										hint="Authentication of the inclusion happens on the device instead of on the controller (for devices without DSK)"
-										persistent-hint
-									></v-checkbox>
+									<div v-if="!loading">
+										<v-checkbox
+											:disabled="
+												s.values.s2AccessControl ===
+												undefined
+											"
+											v-model="s.values.s2AccessControl"
+											label="S2 Access Control"
+											hint="Example: Door Locks, garage doors"
+											persistent-hint
+										></v-checkbox>
+										<v-checkbox
+											:disabled="
+												s.values.s2Authenticated ===
+												undefined
+											"
+											v-model="s.values.s2Authenticated"
+											label="S2 Authenticated"
+											hint="Example: Lighting, Sensors, Security Systems"
+											persistent-hint
+										></v-checkbox>
+										<v-checkbox
+											:disabled="
+												s.values.s2Unauthenticated ===
+												undefined
+											"
+											v-model="s.values.s2Unauthenticated"
+											label="S2 Unauthenticated"
+											hint="Like S2 Authenticated but without verification that the correct device is included"
+											persistent-hint
+										></v-checkbox>
+										<v-checkbox
+											:disabled="
+												s.values.s0Legacy === undefined
+											"
+											v-model="s.values.s0Legacy"
+											label="S0 legacy"
+											hint="Example: Legacy door locks without S2 support"
+											persistent-hint
+										></v-checkbox>
+										<v-checkbox
+											:disabled="
+												s.values.clientAuth ===
+												undefined
+											"
+											v-model="s.values.clientAuth"
+											label="Client-side authentication"
+											hint="Authentication of the inclusion happens on the device instead of on the controller (for devices without DSK)"
+											persistent-hint
+										></v-checkbox>
 
-									<v-card-actions v-if="!loading">
-										<v-btn
-											v-if="!aborted"
-											color="primary"
-											@click.stop="nextStep"
-											@keypress.enter="nextStep"
-										>
-											Next
-										</v-btn>
+										<v-card-actions>
+											<v-btn
+												v-if="!aborted"
+												color="primary"
+												@click.stop="nextStep"
+												class="next-btn"
+												@keypress.enter="nextStep"
+											>
+												Next
+											</v-btn>
 
-										<v-btn
-											color="error"
-											@click="abortInclusion"
-										>
-											Abort
-										</v-btn>
-									</v-card-actions>
+											<v-btn
+												color="error"
+												@click="abortInclusion"
+											>
+												Abort
+											</v-btn>
+										</v-card-actions>
+									</div>
+									<div v-else>
+										<v-col class="text-center">
+											<v-progress-circular
+												size="64"
+												indeterminate
+												color="primary"
+											></v-progress-circular>
+											<p class="mt-3 headline">
+												Waiting response from node...
+											</p>
+										</v-col>
+									</div>
 								</v-card-text>
+
 								<v-card-text v-if="s.key == 's2Pin'">
-									<v-text-field
-										label="DSK Pin"
-										class="mb-2"
-										persistent-hint
-										hint="Enter the 5-digit PIN for your device and verify that the rest of digits matches the one that can be found on your device manual"
-										inputmode="numeric"
-										v-model.trim="s.values.pin"
-										:suffix="
-											$vuetify.breakpoint.xsOnly
-												? ''
-												: s.suffix
-										"
-									>
-									</v-text-field>
-
-									<code
-										class="code font-weight-bold"
-										v-if="$vuetify.breakpoint.xsOnly"
-									>
-										{{ s.suffix }}
-									</code>
-
-									<v-card-actions v-if="!loading">
-										<v-btn
-											v-if="!aborted"
-											color="primary"
-											@click.stop="nextStep"
-											@keypress.enter="nextStep"
+									<div v-if="!loading">
+										<v-text-field
+											label="DSK Pin"
+											class="mb-2"
+											autofocus
+											persistent-hint
+											hint="Enter the 5-digit PIN for your device and verify that the rest of digits matches the one that can be found on your device manual"
+											inputmode="numeric"
+											v-model.trim="s.values.pin"
+											validate-on-blur
+											:error="
+												!!s.values.pin &&
+												validPin(s.values.pin) !== true
+											"
+											:suffix="
+												$vuetify.breakpoint.xsOnly
+													? ''
+													: s.suffix
+											"
 										>
-											Next
-										</v-btn>
+										</v-text-field>
 
-										<v-btn
-											color="error"
-											@click="abortInclusion"
+										<code
+											class="code font-weight-bold"
+											v-if="$vuetify.breakpoint.xsOnly"
 										>
-											Abort
-										</v-btn>
-									</v-card-actions>
+											{{ s.suffix }}
+										</code>
+
+										<v-card-actions>
+											<v-btn
+												v-if="!aborted"
+												color="primary"
+												:disabled="
+													validPin(s.values.pin) !==
+													true
+												"
+												@click.stop="nextStep"
+												class="next-btn"
+												@keypress.enter="nextStep"
+											>
+												Next
+											</v-btn>
+
+											<v-btn
+												color="error"
+												@click="abortInclusion"
+											>
+												Abort
+											</v-btn>
+										</v-card-actions>
+									</div>
+									<div v-else>
+										<v-col class="text-center">
+											<v-progress-circular
+												size="64"
+												indeterminate
+												color="primary"
+											></v-progress-circular>
+											<p class="mt-3 headline">
+												Waiting response from node...
+											</p>
+										</v-col>
+									</div>
 								</v-card-text>
 
 								<v-card-text v-if="s.key == 'done'">
@@ -598,9 +639,15 @@
 													: 'warning'
 											}}</v-icon
 										>
-										<p class="mt-3 headline text-center">
-											{{ s.text }}
-										</p>
+										<p
+											v-text="s.text"
+											class="mt-3 headline text-center"
+										></p>
+										<p
+											v-if="s.error"
+											v-text="s.error"
+											class="headline text-center error--text"
+										></p>
 									</v-col>
 								</v-card-text>
 							</v-card>
@@ -625,7 +672,6 @@
 import { mapState } from 'pinia'
 import { tryParseDSKFromQRCodeString } from '@zwave-js/core/safe'
 
-import { socketEvents } from '@/../server/lib/SocketEvents'
 import {
 	parseSecurityClasses,
 	securityClassesToArray,
@@ -633,15 +679,20 @@ import {
 	validTopic,
 } from '../../lib/utils.js'
 import useBaseStore from '../../stores/base.js'
-import { InclusionStrategy } from 'zwave-js/safe'
+import { InclusionStrategy, SecurityBootstrapFailure } from 'zwave-js/safe'
+import InstancesMixin from '../../mixins/InstancesMixin.js'
 
 export default {
 	props: {
-		value: Boolean, // show or hide
 		socket: Object,
 	},
+	components: {
+		MissingKeysAlert: () => import('../custom/MissingKeysAlert.vue'),
+	},
+	mixins: [InstancesMixin],
 	data() {
 		return {
+			isOpen: false,
 			currentStep: 1,
 			loading: false,
 			validNaming: true,
@@ -708,6 +759,7 @@ export default {
 					success: false,
 					title: 'Done',
 					text: 'Test',
+					error: false,
 				},
 			},
 			steps: [],
@@ -719,7 +771,6 @@ export default {
 			nodeFound: null,
 			currentAction: null,
 			nodeProps: {},
-			bindedSocketEvents: {},
 			stopped: false,
 			aborted: false,
 			nvmProgress: 0,
@@ -740,29 +791,8 @@ export default {
 		controllerStatus() {
 			return this.appInfo.controllerStatus?.status
 		},
-		missingKeys() {
-			const keys = this.zwave.securityKeys || {}
-
-			const requiredKeys = [
-				'S2_Unauthenticated',
-				'S2_Authenticated',
-				'S2_AccessControl',
-				'S0_Legacy',
-			]
-			const missing = []
-			for (const key of requiredKeys) {
-				if (!keys[key] || keys[key].length !== 32) {
-					missing.push(key)
-				}
-			}
-			return missing
-		},
 	},
 	watch: {
-		value(v) {
-			this.init(v)
-			useBaseStore().nodesManagerOpen = v
-		},
 		commandEndDate(newVal) {
 			if (this.commandTimer) {
 				clearInterval(this.commandTimer)
@@ -802,7 +832,7 @@ export default {
 				// inclusion/exclusion started, start the countdown timer
 				if (status.indexOf('started') > 0) {
 					this.commandEndDate = new Date(
-						new Date().getTime() + this.timeoutMs
+						new Date().getTime() + this.timeoutMs,
 					)
 					this.nodeFound = null
 					this.state = 'start'
@@ -816,13 +846,16 @@ export default {
 					} else {
 						// inclusion stopped by controller, see if a node was found
 						let timeout =
-							this.currentAction === 'Exclusion' ? 1000 : 5000
+							this.currentAction === 'Exclusion' ? 3000 : 5000
 						this.state = 'wait'
 
 						// when a node is added/removed showResults it's called from socket event listeners
 						// (onNodeAdded onNodeRemoved) set a timeout in case the events for some reason are not received
 						// fixes issue #2746
-						this.waitTimeout = setTimeout(this.showResults, timeout) // add additional discovery time
+						this.waitTimeout = setTimeout(
+							() => this.showResults(),
+							timeout,
+						) // add additional discovery time
 					}
 				} else {
 					// error
@@ -845,10 +878,47 @@ export default {
 			}
 		},
 	},
+	mounted() {
+		this.onKeypressed = (event) => {
+			if (!this.isOpen) {
+				return
+			}
+
+			if (event.key === 'Enter') {
+				this.dispatchEnter()
+			}
+		}
+
+		window.addEventListener('keydown', this.onKeypressed)
+	},
+	beforeDestroy() {
+		this.init(false)
+		window.removeEventListener('keydown', this.onKeypressed)
+	},
 	methods: {
 		submitNameLoc() {
 			if (this.$refs.namingForm[0].validate()) {
 				this.nextStep()
+			}
+		},
+		validPin(pin) {
+			return pin?.length === 5 || 'PIN must be 5 digits'
+		},
+		dispatchEnter() {
+			const isDoneStep = this.steps[this.currentStep - 1]?.key === 'done'
+
+			if (isDoneStep) {
+				this.changeStep(0)
+			} else {
+				// for some reason using @keydown.enter on buttons isn't working
+				// this trick is used to dispatch the enter event to the button
+				const button = this.$refs.content[0].$el.querySelector(
+					'.next-btn:not([disabled])',
+				)
+
+				if (button) {
+					button.click()
+				}
 			}
 		},
 		onNodeAdded({ node, result }) {
@@ -865,100 +935,93 @@ export default {
 				this.showResults()
 			}
 		},
-		onApiResponse(data) {
-			if (!data.success) {
-				if (data.api === 'replaceFailedNode') {
-					this.init()
-				}
-			} else {
-				if (data.api === 'parseQRCodeString') {
-					const res = data.result
-					let provisioning = res.parsed
+		async onParseQrCode(data) {
+			const res = data.result
+			let provisioning = res.parsed
 
-					if (provisioning) {
-						// add name and location to provisioning
-						if (this.nodeProps) {
-							provisioning = {
-								...provisioning,
-								...this.nodeProps,
-							}
-						}
-
-						const mode = 4 // s2 only
-
-						const replaceStep = this.steps.find(
-							(s) => s.key === 'replaceFailed'
-						)
-						let replaceId
-
-						if (replaceStep) {
-							replaceId = replaceStep.values.replaceId
-							if (typeof replaceId === 'object') {
-								replaceId = replaceId.id
-							} else {
-								replaceId = parseInt(replaceId, 10)
-							}
-						}
-						// S2 only, start inclusion
-						if (provisioning.version === 0) {
-							this.aborted = false
-							this.loading = true
-
-							if (replaceStep) {
-								this.sendAction('replaceFailedNode', [
-									replaceId,
-									mode,
-									{ provisioning },
-								])
-							} else {
-								if (res.exists) {
-									this.alert = {
-										type: 'info',
-										text: 'Already added to provisioning list',
-									}
-									this.state = 'stop'
-									return
-								}
-
-								if (res.nodeId) {
-									this.alert = {
-										type: 'info',
-										text: 'Node already added',
-									}
-									this.state = 'stop'
-									return
-								}
-								this.sendAction('startInclusion', [
-									mode,
-									{ provisioning },
-								])
-							}
-						} else if (provisioning.version === 1) {
-							// smart start
-							if (!replaceStep) {
-								this.$emit(
-									'apiRequest',
-									'provisionSmartStartNode',
-									[provisioning]
-								)
-							} else {
-								// it's a smart start code btw in replace we cannot use it as smart start
-								this.sendAction('replaceFailedNode', [
-									replaceId,
-									mode,
-									{ provisioning },
-								])
-							}
-						}
+			if (provisioning) {
+				// add name and location to provisioning
+				if (this.nodeProps) {
+					provisioning = {
+						...provisioning,
+						...this.nodeProps,
 					}
-				} else if (data.api === 'provisionSmartStartNode') {
-					this.alert = null
+				}
+
+				const mode = 4 // s2 only
+
+				const replaceStep = this.steps.find(
+					(s) => s.key === 'replaceFailed',
+				)
+				let replaceId
+
+				if (replaceStep) {
+					replaceId = replaceStep.values.replaceId
+					if (typeof replaceId === 'object') {
+						replaceId = replaceId.id
+					} else {
+						replaceId = parseInt(replaceId, 10)
+					}
+				}
+				// S2 only, start inclusion
+				if (provisioning.version === 0) {
 					this.aborted = false
-					const doneStep = copy(this.availableSteps.done)
-					doneStep.text = `Node added to provisioning list`
-					doneStep.success = true
-					this.pushStep(doneStep)
 					this.loading = true
+
+					if (replaceStep) {
+						this.sendAction('replaceFailedNode', [
+							replaceId,
+							mode,
+							{ provisioning },
+						])
+					} else {
+						if (res.exists) {
+							this.alert = {
+								type: 'info',
+								text: 'Already added to provisioning list',
+							}
+							this.state = 'stop'
+							return
+						}
+
+						if (res.nodeId) {
+							this.alert = {
+								type: 'info',
+								text: 'Node already added',
+							}
+							this.state = 'stop'
+							return
+						}
+						this.sendAction('startInclusion', [
+							mode,
+							{ provisioning },
+						])
+					}
+				} else if (provisioning.version === 1) {
+					// smart start
+					if (!replaceStep) {
+						const response = await this.app.apiRequest(
+							'provisionSmartStartNode',
+							[provisioning],
+						)
+
+						if (response.success) {
+							this.alert = null
+							this.aborted = false
+							const doneStep = copy(this.availableSteps.done)
+							doneStep.text = `Node added to provisioning list`
+							doneStep.success = true
+							this.pushStep(doneStep)
+							this.loading = true
+						}
+					} else {
+						// it's a smart start code btw in replace we cannot use it as smart start
+						this.sendAction('replaceFailedNode', [
+							replaceId,
+							mode,
+							{ provisioning },
+						])
+					}
 				}
 			}
 		},
@@ -969,10 +1032,10 @@ export default {
 				this.steps = this.steps.slice(0, index)
 			}
 		},
-		abortInclusion() {
+		async abortInclusion() {
 			this.aborted = true
 			this.loading = true
-			this.$emit('apiRequest', 'abortInclusion', [])
+			await this.app.apiRequest('abortInclusion', [])
 		},
 		onGrantSecurityCC(requested) {
 			const grantStep = this.availableSteps.s2Classes
@@ -1036,7 +1099,7 @@ export default {
 				if (mode === InclusionStrategy.SmartStart) {
 					this.alert = null
 
-					const qrString = await this.$listeners.showConfirm(
+					const qrString = await this.app.confirm(
 						'Smart start',
 						'Scan QR Code or import it as an image',
 						'info',
@@ -1045,7 +1108,7 @@ export default {
 							tryParseDsk: true,
 							canceltext: 'Close',
 							width: 500,
-						}
+						},
 					)
 					if (!qrString) {
 						return
@@ -1054,9 +1117,13 @@ export default {
 					dsk = tryParseDSKFromQRCodeString(qrString)
 
 					if (!dsk) {
-						this.$emit('apiRequest', 'parseQRCodeString', [
-							qrString,
-						])
+						const response = await this.app.apiRequest(
+							'parseQRCodeString',
+							[qrString],
+						)
+
+						this.onParseQrCode(response)
+
 						return
 					} else {
 						// prefilled DSK qr code
@@ -1067,7 +1134,7 @@ export default {
 				this.aborted = false
 				this.loading = true
 				const replaceStep = this.steps.find(
-					(s) => s.key === 'replaceFailed'
+					(s) => s.key === 'replaceFailed',
 				)
 
 				if (replaceStep) {
@@ -1093,26 +1160,48 @@ export default {
 
 				const securityClasses = securityClassesToArray(s.values)
 
-				this.$emit('apiRequest', 'grantSecurityClasses', [
+				this.loading = true
+				await this.app.apiRequest('grantSecurityClasses', [
 					{
 						securityClasses,
 						clientSideAuth: !!values.clientAuth,
 					},
 				])
-
-				this.loading = true
 			} else if (s.key === 's2Pin') {
-				const mode = s.values.pin
-				this.$emit('apiRequest', 'validateDSK', [mode])
+				const pin = s.values.pin
 				this.loading = true
+				await this.app.apiRequest('validateDSK', [pin])
 			} else if (s.key === 'replaceFailed') {
 				this.currentAction = 'Inclusion'
 				this.pushStep('replaceInclusionMode')
 			}
 		},
-		init(bind) {
+		async show(stepOrStepsValues) {
+			this.isOpen = true
+			this.$emit('open')
+			if (typeof stepOrStepsValues === 'object') {
+				this.init(true)
+				this.steps = []
+				for (const s in stepOrStepsValues) {
+					const step = await this.pushStep(s)
+					Object.assign(step.values, stepOrStepsValues[s])
+				}
+			} else {
+				this.init(true, stepOrStepsValues)
+			}
+		},
+		close() {
+			this.isOpen = false
+			this.$emit('close')
+			this.init(false)
+		},
+		init(bind, step = 'action') {
 			this.steps = []
-			this.pushStep('action')
+
+			if (this.availableSteps[step]) {
+				this.pushStep(step)
+				// this.pushStep('s2Pin')
+			}
 
 			// stop any running inclusion/exclusion
 			if (this.state !== 'start') {
@@ -1136,15 +1225,14 @@ export default {
 				this.commandTimer = null
 			}
 
-			if (bind) {
+			if (bind && Object.keys(this.bindedSocketEvents).length === 0) {
 				this.bindEvent(
 					'grantSecurityClasses',
-					this.onGrantSecurityCC.bind(this)
+					this.onGrantSecurityCC.bind(this),
 				)
 				this.bindEvent('validateDSK', this.onValidateDSK.bind(this))
 				this.bindEvent('nodeRemoved', this.onNodeRemoved.bind(this))
 				this.bindEvent('nodeAdded', this.onNodeAdded.bind(this))
-				this.bindEvent('api', this.onApiResponse.bind(this))
 			} else if (bind === false) {
 				this.unbindEvents()
 			}
@@ -1154,15 +1242,18 @@ export default {
 				typeof step === 'string' ? this.availableSteps[step] : step
 			s.index = this.steps.length + 1
 			this.alert = null
-			this.steps.push(copy(s))
+			const newStep = copy(s)
+			this.steps.push(newStep)
 			await this.$nextTick()
-			this.currentStep = s.index
+			this.currentStep = newStep.index
+
+			return newStep
 		},
 		stopAction() {
 			this.stopped = true
 			this.sendAction('stop' + this.currentAction)
 		},
-		sendAction(api, args) {
+		async sendAction(api, args) {
 			this.commandEndDate = null
 
 			let text = ''
@@ -1180,22 +1271,40 @@ export default {
 				text,
 			}
 
-			this.$emit('apiRequest', api, args)
 			this.state = 'wait' // make sure user can't trigger another action too soon
-		},
-		bindEvent(eventName, handler) {
-			this.socket.on(socketEvents[eventName], handler)
-			this.bindedSocketEvents[eventName] = handler
-		},
-		unbindEvents() {
-			for (const event in this.bindedSocketEvents) {
-				this.socket.off(
-					socketEvents[event],
-					this.bindedSocketEvents[event]
-				)
-			}
+			const response = await this.app.apiRequest(api, args)
 
-			this.bindedSocketEvents = {}
+			if (response.success) {
+				// done
+			} else {
+				if (api === 'replaceFailedNode') {
+					this.init()
+				}
+			}
+		},
+		getSecurityBootstrapError(val) {
+			switch (val) {
+				case SecurityBootstrapFailure.NodeCanceled:
+					return 'Security bootstrap canceled by the included node'
+				case SecurityBootstrapFailure.NoKeysConfigured:
+					return 'Required security keys not configured'
+				case SecurityBootstrapFailure.ParameterMismatch:
+					return 'No possible match in encryption parameters between the controller and the node'
+				case SecurityBootstrapFailure.S2IncorrectPIN:
+					return 'Incorrect S2 PIN'
+				case SecurityBootstrapFailure.S2NoUserCallbacks:
+					return 'No user callbacks'
+				case SecurityBootstrapFailure.S2WrongSecurityLevel:
+					return 'Security keys mismatch between the controller and the node'
+				case SecurityBootstrapFailure.Timeout:
+					return 'Expected message was not received within the corresponding timeout'
+				case SecurityBootstrapFailure.Unknown:
+					return 'Unknown error'
+				case SecurityBootstrapFailure.UserCanceled:
+					return 'Security bootstrap canceled by the user'
+				default:
+					return 'Unknown error'
+			}
 		},
 		showResults(result) {
 			if (this.waitTimeout) {
@@ -1223,7 +1332,10 @@ export default {
 				const doneStep = copy(this.availableSteps.done)
 				doneStep.text = `Node ${
 					this.nodeFound.id
-				} added with security "${this.nodeFound.security || 'None'}"`
+				} added with security ${this.nodeFound.security || 'None'}`
+				doneStep.error = result.lowSecurityReason
+					? this.getSecurityBootstrapError(result.lowSecurityReason)
+					: false
 				doneStep.success = !(result && result.lowSecurity)
 				this.pushStep(doneStep)
 			}
@@ -1236,9 +1348,6 @@ export default {
 		validateTopic(name) {
 			return this.mqtt.disabled ? true : validTopic(name)
 		},
-	},
-	beforeDestroy() {
-		this.init(false)
 	},
 }
 </script>

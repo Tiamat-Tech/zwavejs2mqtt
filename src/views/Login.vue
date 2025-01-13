@@ -10,7 +10,7 @@
 			>
 				<v-card-title style="">
 					<v-avatar style="border-radius: 0" size="40px">
-						<img :src="assetPath('/static/logo.png')" alt="Logo" />
+						<img src="/logo.svg" alt="Logo" />
 					</v-avatar>
 					<v-toolbar-title style="margin-left: 20px"
 						>Z-Wave JS UI</v-toolbar-title
@@ -40,7 +40,7 @@
 							:rules="[rules.required]"
 							v-model="password"
 							prepend-icon="lock"
-							name="current-password"
+							name="password"
 							label="Password"
 							autocomplete
 							:type="showPsw ? 'text' : 'password'"
@@ -97,8 +97,11 @@
 import ConfigApis from '@/apis/ConfigApis'
 import { Routes } from '@/router'
 import useBaseStore from '../stores/base.js'
+import logger from '../lib/logger'
 
 import { mapState, mapActions } from 'pinia'
+
+const log = logger.get('Login')
 
 export default {
 	data() {
@@ -128,7 +131,6 @@ export default {
 			},
 			set(value) {
 				this.setDarkMode(value)
-				this.$vuetify.theme.dark = value
 			},
 		},
 	},
@@ -165,9 +167,6 @@ export default {
 	},
 	methods: {
 		...mapActions(useBaseStore, ['setDarkMode']),
-		assetPath(path) {
-			return ConfigApis.getBasePath(path)
-		},
 		isLocalStorageSupported() {
 			const testKey = 'test'
 			const storage = window.localStorage
@@ -204,7 +203,7 @@ export default {
 						user.rememberMe = this.rememberMe
 						localStorage.setItem('user', JSON.stringify(user))
 						localStorage.setItem('logged', 'true')
-						useBaseStore().setUser(user)
+						useBaseStore().onUserLogged(user)
 
 						if (this.$route.params.nextUrl != null) {
 							this.$router.push(this.$route.params.nextUrl)
@@ -213,7 +212,7 @@ export default {
 						}
 					}
 				} catch (error) {
-					console.log(error)
+					log.error(error)
 					this.error = true
 					this.error_type = 'error'
 					this.error_text = error.message

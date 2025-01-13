@@ -49,7 +49,7 @@
 												(item.label || item.id) +
 												(item.endpoint > 0
 													? ' - Endpoint ' +
-													  item.endpoint
+														item.endpoint
 													: '')
 											}}</v-list-item-title>
 											<v-list-item-subtitle
@@ -235,7 +235,6 @@
 
 <script>
 // import Prism Editor
-import { PrismEditor } from 'vue-prism-editor'
 import 'vue-prism-editor/dist/prismeditor.min.css' // import the styles somewhere
 
 // import highlighting library (you can use any library you want just return html string)
@@ -249,7 +248,8 @@ import useBaseStore from '../../stores/base.js'
 
 export default {
 	components: {
-		PrismEditor,
+		PrismEditor: () =>
+			import('vue-prism-editor').then((m) => m.PrismEditor),
 	},
 	props: {
 		value: Boolean,
@@ -271,7 +271,7 @@ export default {
 		...mapState(useBaseStore, ['gateway', 'mqtt']),
 		deviceValues() {
 			const device = this.devices.find(
-				(d) => d.value == this.editedValue.device
+				(d) => d.value == this.editedValue.device,
 			) // eslint-disable-line eqeqeq
 			return device ? device.values : []
 		},

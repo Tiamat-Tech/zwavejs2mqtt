@@ -1,15 +1,14 @@
 import axios from 'axios'
-import { loadProgressBar } from 'axios-progress-bar'
+import loadProgressBar from '../lib/axios-progress-bar'
 import Router from '../router'
+import logger from '../lib/logger'
 
-function getBasePath(path) {
-	return document.baseURI.replace(/\/$/, '') + (path || '')
-}
+const log = logger.get('ConfigApis')
 
-axios.defaults.socketUrl = getBasePath()
-axios.defaults.baseURL = `${axios.defaults.socketUrl}/api`
+axios.defaults.baseURL = `./api`
 
 function responseHandler(response) {
+	log.debug('Response', response)
 	if (response.data && response.data.code === 3) {
 		localStorage.removeItem('logged')
 		Router.push('/')
@@ -21,18 +20,22 @@ function responseHandler(response) {
 
 const request = {
 	async get(...args) {
+		log.debug('Request', ...args)
 		const response = await axios.get(...args)
 		return responseHandler(response)
 	},
 	async put(...args) {
+		log.debug('Request', ...args)
 		const response = await axios.put(...args)
 		return responseHandler(response)
 	},
 	async post(...args) {
+		log.debug('Request', ...args)
 		const response = await axios.post(...args)
 		return responseHandler(response)
 	},
 	async delete(...args) {
+		log.debug('Request', ...args)
 		const response = await axios.delete(...args)
 		return responseHandler(response)
 	},
@@ -50,8 +53,29 @@ export default {
 		return request.get('/logout')
 	},
 	async isAuthEnabled() {
-		const response = await request.get('/auth-enabled')
-		return response.data
+		// use fetch instead of axios here in order to catch
+		// redirects and fix external auth:
+		// https://github.com/zwave-js/zwave-js-ui/issues/3427
+		// const response = await request.get('/auth-enabled')
+		// return response.data
+
+		const response = await fetch(axios.defaults.baseURL + '/auth-enabled', {
+			credentials: 'include',
+			redirect: 'manual',
+			headers: {
+				Accept: 'application/json',
+			},
+		})
+		if (response.type === 'opaqueredirect' || response.status === 401) {
+			throw new axios.AxiosError(
+				'Caught redirect for auth-enabled, rethrowing',
+				response.status,
+				response.config,
+				response.request,
+				response,
+			)
+		}
+		return await response.json()
 	},
 	// ---- USER ------
 	async updatePassword(data) {
@@ -59,12 +83,6 @@ export default {
 		return response.data
 	},
 	// ---- CONFIG -----
-	getBasePath,
-	getSocketPath() {
-		const innerPath = document.baseURI.split('/').splice(3).join('/')
-		const socketPath = `/${innerPath}/socket.io`.replace('//', '/')
-		return socketPath === '/socket.io' ? undefined : socketPath
-	},
 	async getConfig() {
 		const response = await request.get('/settings')
 		return response.data
@@ -103,14 +121,14 @@ export default {
 			{
 				content,
 			},
-			{ params: query }
+			{ params: query },
 		)
 		return response.data
 	},
-	async restoreZip(formData) {
+	async storeUpload(formData) {
 		let response = await axios({
 			method: 'post',
-			url: '/store/restore',
+			url: '/store/upload',
 			data: formData,
 			headers: { 'Content-Type': 'multipart/form-data' },
 		})
@@ -129,6 +147,10 @@ export default {
 	},
 	async deleteMultiple(files) {
 		const response = await request.put('/store-multi', { files })
+		return response.data
+	},
+	async updateVersions(disableChangelog = false) {
+		const response = await request.post('/versions', { disableChangelog })
 		return response.data
 	},
 }
