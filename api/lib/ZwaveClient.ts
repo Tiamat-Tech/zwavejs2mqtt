@@ -1,4 +1,3 @@
-// eslint-disable-next-line one-var
 import {
 	CommandClasses,
 	ConfigurationMetadata,
@@ -112,6 +111,7 @@ import {
 	JoinNetworkStrategy,
 	JoinNetworkResult,
 	DriverMode,
+	BatteryReplacementStatus,
 } from 'zwave-js'
 import { getEnumMemberName, parseQRCodeString } from 'zwave-js/Utils'
 import { configDbDir, logsDir, nvmBackupsDir, storeDir } from '../config/app'
@@ -133,6 +133,7 @@ import { socketEvents } from './SocketEvents'
 import { isUint8Array } from 'util/types'
 import { PkgFsBindings } from './PkgFsBindings'
 import { join } from 'path'
+import { regionSupportsAutoPowerlevel } from './shared'
 
 export const deviceConfigPriorityDir = join(storeDir, 'config')
 
@@ -141,7 +142,7 @@ export const configManager = new ConfigManager({
 })
 
 const logger = LogManager.module('Z-Wave')
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const loglevels = require('triple-beam').configs.npm.levels
 
 const NEIGHBORS_LOCK_REFRESH = 60 * 1000
@@ -2123,7 +2124,6 @@ class ZwaveClient extends TypedEventEmitter<ZwaveClientEventCallbacks> {
 		}
 
 		const AsyncFunction = Object.getPrototypeOf(
-			// eslint-disable-next-line @typescript-eslint/no-empty-function
 			async function () {},
 		).constructor
 
@@ -3264,12 +3264,22 @@ class ZwaveClient extends TypedEventEmitter<ZwaveClientEventCallbacks> {
 				'powerlevel' | 'RFRegion' | 'maxLongRangePowerlevel'
 			> = ['RFRegion']
 
+			const supportsAutoPowerlevel = regionSupportsAutoPowerlevel(region)
+
 			// If powerlevels are in auto mode, refresh them after region change
-			if (this.cfg.rf?.txPower?.powerlevel === 'auto') {
-				propsToUpdate.push('powerlevel')
-			}
-			if (this.cfg.rf?.maxLongRangePowerlevel === 'auto') {
-				propsToUpdate.push('maxLongRangePowerlevel')
+			if (supportsAutoPowerlevel) {
+				if (
+					this.cfg.rf?.autoPowerlevels ||
+					this.cfg.rf?.txPower?.powerlevel === 'auto'
+				) {
+					propsToUpdate.push('powerlevel')
+				}
+				if (
+					this.cfg.rf?.autoPowerlevels ||
+					this.cfg.rf?.maxLongRangePowerlevel === 'auto'
+				) {
+					propsToUpdate.push('maxLongRangePowerlevel')
+				}
 			}
 
 			await this.updateControllerNodeProps(null, propsToUpdate)
@@ -5814,36 +5824,42 @@ class ZwaveClient extends TypedEventEmitter<ZwaveClientEventCallbacks> {
 
 		let data = null
 
-		if (ccId === CommandClasses.Notification) {
-			valueId.property = args.label
-			valueId.propertyKey = args.eventLabel
-
-			data = this._parseNotification(args.parameters)
-		} else if (ccId === CommandClasses['Entry Control']) {
-			valueId.property = args.eventType.toString()
-			valueId.propertyKey = args.dataType
-			data = isUint8Array(args.eventData)
-				? utils.buffer2hex(args.eventData)
-				: args.eventData
-		} else if (ccId === CommandClasses['Multilevel Switch']) {
-			valueId.property = getEnumMemberName(
-				MultilevelSwitchCommand,
-				args.eventType as number,
-			)
-			data = args.direction
-		} else if (ccId === CommandClasses.Powerlevel) {
-			// ignore, this should be handled in zwave-js
-			return
-		} else {
-			this.logNode(
-				zwaveNode,
-				'error',
-				'Unknown notification received CC %s: %o',
-				valueId.commandClassName,
-				args,
-			)
-
-			return
+		switch (ccId) {
+			case CommandClasses.Notification:
+				valueId.property = args.label
+				valueId.propertyKey = args.eventLabel
+				data = this._parseNotification(args.parameters)
+				break
+			case CommandClasses['Entry Control']:
+				valueId.property = args.eventType.toString()
+				valueId.propertyKey = args.dataType
+				data = isUint8Array(args.eventData)
+					? utils.buffer2hex(args.eventData)
+					: args.eventData
+				break
+			case CommandClasses['Multilevel Switch']:
+				valueId.property = getEnumMemberName(
+					MultilevelSwitchCommand,
+					args.eventType as number,
+				)
+				data = args.direction
+				break
+			case CommandClasses.Powerlevel:
+				// ignore, this should be handled in zwave-js
+				return
+			case CommandClasses['Battery']:
+				valueId.property = args.eventType
+				data = getEnumMemberName(BatteryReplacementStatus, args.urgency)
+				break
+			default:
+				this.logNode(
+					zwaveNode,
+					'error',
+					'Unknown notification received CC %s: %o',
+					valueId.commandClassName,
+					args,
+				)
+				return
 		}
 
 		valueId.id = this._getValueID(valueId, true)
